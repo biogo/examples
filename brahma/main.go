@@ -1,14 +1,14 @@
 package main
 
 import (
+	"code.google.com/p/biogo/feat"
+	"code.google.com/p/biogo/interval"
+	"code.google.com/p/biogo/io/featio/gff"
+	"code.google.com/p/biogo/util"
 	"container/heap"
 	"encoding/gob"
 	"flag"
 	"fmt"
-	"github.com/kortschak/biogo/feat"
-	"github.com/kortschak/biogo/interval"
-	"github.com/kortschak/biogo/io/featio/gff"
-	"github.com/kortschak/biogo/util"
 	"os"
 	"runtime"
 	"sort"

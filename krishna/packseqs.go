@@ -1,12 +1,12 @@
 package main
 
 import (
+	"code.google.com/p/biogo/align/pals"
+	"code.google.com/p/biogo/io/seqio/fasta"
+	"code.google.com/p/biogo/seq"
+	"code.google.com/p/biogo/util"
 	"crypto/md5"
 	"fmt"
-	"github.com/kortschak/biogo/align/pals"
-	"github.com/kortschak/biogo/io/seqio/fasta"
-	"github.com/kortschak/biogo/seq"
-	"github.com/kortschak/biogo/util"
 	"os"
 	"path/filepath"
 )

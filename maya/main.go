@@ -16,10 +16,10 @@
 package main
 
 import (
+	"code.google.com/p/biogo/interval"
+	"code.google.com/p/biogo/io/featio/bed"
 	"flag"
 	"fmt"
-	"github.com/kortschak/biogo/interval"
-	"github.com/kortschak/biogo/io/featio/bed"
 	"math"
 	"os"
 )

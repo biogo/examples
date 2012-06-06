@@ -1,13 +1,13 @@
 package main
 
 import (
+	"code.google.com/p/biogo/index/kmerindex"
+	"code.google.com/p/biogo/io/seqio/fasta"
+	"code.google.com/p/biogo/matrix"
+	"code.google.com/p/biogo/matrix/sparse"
+	"code.google.com/p/biogo/nmf"
 	"flag"
 	"fmt"
-	"github.com/kortschak/biogo/index/kmerindex"
-	"github.com/kortschak/biogo/io/seqio/fasta"
-	"github.com/kortschak/biogo/matrix"
-	"github.com/kortschak/biogo/matrix/sparse"
-	"github.com/kortschak/biogo/nmf"
 	"math/rand"
 	"os"
 	"runtime"

@@ -1,10 +1,10 @@
 package main
 
 import (
+	"code.google.com/p/biogo/io/seqio/fasta"
+	"code.google.com/p/biogo/seq"
 	"flag"
 	"fmt"
-	"github.com/kortschak/biogo/io/seqio/fasta"
-	"github.com/kortschak/biogo/seq"
 	"os"
 	"runtime/pprof"
 )

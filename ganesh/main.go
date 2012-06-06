@@ -2,11 +2,11 @@ package main
 
 import (
 	"bufio"
+	"code.google.com/p/biogo/matrix"
+	"code.google.com/p/biogo/matrix/sparse"
+	"code.google.com/p/biogo/nmf"
 	"flag"
 	"fmt"
-	"github.com/kortschak/biogo/matrix"
-	"github.com/kortschak/biogo/matrix/sparse"
-	"github.com/kortschak/biogo/nmf"
 	"io"
 	"math/rand"
 	"os"

@@ -1,10 +1,10 @@
 package main
 
 import (
+	"code.google.com/p/biogo/index/kmerindex"
+	"code.google.com/p/biogo/io/seqio/fasta"
 	"flag"
 	"fmt"
-	"github.com/kortschak/biogo/index/kmerindex"
-	"github.com/kortschak/biogo/io/seqio/fasta"
 	"os"
 )
 

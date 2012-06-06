@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/kortschak/biogo/align/pals"
-	"github.com/kortschak/biogo/align/pals/dp"
-	"github.com/kortschak/biogo/seq"
+	"code.google.com/p/biogo/align/pals"
+	"code.google.com/p/biogo/align/pals/dp"
+	"code.google.com/p/biogo/seq"
 	"sync"
 )
 

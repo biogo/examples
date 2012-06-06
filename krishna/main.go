@@ -1,12 +1,12 @@
 package main
 
 import (
+	"code.google.com/p/biogo/align/pals"
+	"code.google.com/p/biogo/align/pals/filter"
+	"code.google.com/p/biogo/morass"
+	"code.google.com/p/biogo/seq"
 	"flag"
 	"fmt"
-	"github.com/kortschak/biogo/align/pals"
-	"github.com/kortschak/biogo/align/pals/filter"
-	"github.com/kortschak/biogo/morass"
-	"github.com/kortschak/biogo/seq"
 	"io"
 	"log"
 	"os"
