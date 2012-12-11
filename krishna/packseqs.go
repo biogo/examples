@@ -2,8 +2,10 @@ package main
 
 import (
 	"code.google.com/p/biogo/align/pals"
-	"code.google.com/p/biogo/io/seqio/fasta"
-	"code.google.com/p/biogo/seq"
+	"code.google.com/p/biogo/exp/alphabet"
+	"code.google.com/p/biogo/exp/seq"
+	"code.google.com/p/biogo/exp/seq/linear"
+	"code.google.com/p/biogo/exp/seqio/fasta"
 	"code.google.com/p/biogo/util"
 	"crypto/md5"
 	"fmt"
@@ -11,7 +13,7 @@ import (
 	"path/filepath"
 )
 
-func packSequence(fileName string) *seq.Seq {
+func packSequence(fileName string) (*pals.Packed, error) {
 	_, name := filepath.Split(fileName)
 	packer := pals.NewPacker(name)
 
@@ -20,7 +22,8 @@ func packSequence(fileName string) *seq.Seq {
 		md5hash, _ := util.Hash(md5.New(), file)
 		logger.Printf("Reading %s: %s", fileName, fmt.Sprintf("%x", md5hash))
 
-		seqFile := fasta.NewReader(file)
+		template := &linear.Seq{Annotation: seq.Annotation{Alpha: alphabet.DNA}}
+		seqFile := fasta.NewReader(file, template)
 
 		f, p := logger.Flags(), logger.Prefix()
 		if verbose {
@@ -29,15 +32,18 @@ func packSequence(fileName string) *seq.Seq {
 			logger.Println("Sequence            \t    Length\t   Bin Range")
 		}
 
-		var sequence *seq.Seq
+		var seq seq.Sequence
 		for {
-			sequence, err = seqFile.Read()
-			if err == nil {
-				if s := packer.Pack(sequence); verbose {
-					logger.Println(s)
-				}
-			} else {
+			seq, err = seqFile.Read()
+			if err != nil {
 				break
+			}
+			s, err := packer.Pack(seq.(*linear.Seq))
+			if err != nil {
+				return nil, err
+			}
+			if verbose {
+				logger.Println(s)
 			}
 		}
 		if verbose {
@@ -48,7 +54,5 @@ func packSequence(fileName string) *seq.Seq {
 		logger.Fatalf("Error: %v.\n", err)
 	}
 
-	packer.FinalisePack()
-
-	return packer.Packed
+	return packer.FinalisePack(), nil
 }

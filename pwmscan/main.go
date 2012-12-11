@@ -2,14 +2,15 @@ package main
 
 import (
 	"bufio"
-	"code.google.com/p/biogo/bio"
-	"code.google.com/p/biogo/io/alignio"
+	"code.google.com/p/biogo/exp/alphabet"
+	"code.google.com/p/biogo/exp/seq/linear"
+	"code.google.com/p/biogo/exp/seq/multi"
+	"code.google.com/p/biogo/exp/seqio/fasta"
 	"code.google.com/p/biogo/io/featio/gff"
-	"code.google.com/p/biogo/io/seqio/fasta"
 	"code.google.com/p/biogo/pwm"
-	"code.google.com/p/biogo/seq"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -20,9 +21,9 @@ func main() {
 		in, min *fasta.Reader
 		mf      *os.File
 		matin   *bufio.Reader
-		align   seq.Alignment
+		align   *multi.Multi
 		out     *gff.Writer
-		e       error
+		err     error
 	)
 
 	inName := flag.String("in", "", "Filename for input. Defaults to stdin.")
@@ -35,31 +36,15 @@ func main() {
 
 	flag.Parse()
 
-	if *help {
+	if *help || *matName == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	bio.Precision = *precision
-
-	if *inName == "" {
-		in = fasta.NewReader(os.Stdin)
-	} else if in, e = fasta.NewReaderName(*inName); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.\n", e)
-		os.Exit(0)
-	}
-	defer in.Close()
-
-	if *matName == "" {
-		flag.Usage()
-		os.Exit(0)
-	}
-
 	matrix := [][]float64{}
-
 	if *num {
-		if mf, e = os.Open(*matName); e != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.\n", e)
+		if mf, err = os.Open(*matName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
 			os.Exit(0)
 		} else {
 			matin = bufio.NewReader(mf)
@@ -89,38 +74,57 @@ func main() {
 			}
 		}
 	} else {
-		if min, e = fasta.NewReaderName(*matName); e != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.\n", e)
+		mr, err := os.Open(*matName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
 			os.Exit(0)
-		} else {
-			if align, e = alignio.NewReader(min).Read(); e != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v.\n", e)
-				os.Exit(0)
-			}
 		}
-		defer min.Close()
+		min = fasta.NewReader(mr, linear.NewSeq("", nil, alphabet.DNA))
+		for {
+			s, err := min.Read()
+			if err != nil {
+				if err != io.EOF {
+					fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
+					os.Exit(0)
+				}
+				break
+			}
+			align.Add(s)
+		}
+		mr.Close()
 
 		for i := 0; i < align.Len(); i++ {
 			matrix[i] = make([]float64, 4)
-			if col, err := align.Column(i, 0); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v.\n", e)
-				os.Exit(0)
-			} else {
-				for _, v := range col {
-					if base := pwm.LookUp.ValueToCode[v]; base >= 0 {
-						matrix[i][base]++
-					}
+			for _, v := range align.Column(i, true) {
+				if base := alphabet.DNA.IndexOf(v); base >= 0 {
+					matrix[i][base]++
 				}
 			}
 		}
 	}
-
 	wm := pwm.New(matrix)
+	wm.Format = fmt.Sprintf("%%.%de", *precision)
+
+	var r io.ReadCloser
+	if *inName == "" {
+		r = os.Stdin
+	} else if r, err = os.Open(*inName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
+		os.Exit(0)
+	} else {
+		defer r.Close()
+	}
+	in = fasta.NewReader(r, linear.NewSeq("", nil, alphabet.DNA))
+
+	if *matName == "" {
+		flag.Usage()
+		os.Exit(0)
+	}
 
 	if *outName == "" {
 		out = gff.NewWriter(os.Stdout, 2, 60, true)
-	} else if out, e = gff.NewWriterName(*outName, 2, 60, true); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.\n", e)
+	} else if out, err = gff.NewWriterName(*outName, 2, 60, true); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
 	}
 	defer out.Close()
 
@@ -128,13 +132,17 @@ func main() {
 	feature := "match"
 
 	for {
-		if sequence, err := in.Read(); err != nil {
+		if s, err := in.Read(); err != nil {
 			break
 		} else {
-			fmt.Fprintf(os.Stderr, "Working on: %s\n", sequence.ID)
-			results := wm.Search(sequence, 0, sequence.Len(), *minScore)
-
-			for _, r := range results {
+			fmt.Fprintf(os.Stderr, "Working on: %s %s\n", s.Name(), s.Description())
+			res := wm.Search(s.(*linear.Seq), s.Start(), s.End(), *minScore)
+			if len(res) > 1 {
+				fmt.Fprintf(os.Stderr, "... found %d matches.\n", len(res))
+			} else {
+				fmt.Fprintf(os.Stderr, "... found %d match.\n", len(res))
+			}
+			for _, r := range res {
 				r.Source = source
 				r.Feature = feature
 				out.Write(r)

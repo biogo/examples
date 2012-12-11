@@ -4,7 +4,6 @@ import (
 	"code.google.com/p/biogo/align/pals"
 	"code.google.com/p/biogo/align/pals/filter"
 	"code.google.com/p/biogo/morass"
-	"code.google.com/p/biogo/seq"
 	"flag"
 	"fmt"
 	"io"
@@ -134,9 +133,13 @@ func main() {
 	}
 
 	logger.Println(os.Args)
-	var target, query *seq.Seq
+	var target, query *pals.Packed
 	if targetName != "" {
-		target = packSequence(targetName)
+		var err error
+		target, err = packSequence(targetName)
+		if err != nil {
+			log.Fatalf("Internal error: %v", err)
+		}
 	} else {
 		logger.Fatalln("No target provided.")
 	}
@@ -155,7 +158,11 @@ func main() {
 
 	if !selfCompare {
 		if queryName != "" {
-			query = packSequence(queryName)
+			var err error
+			query, err = packSequence(queryName)
+			if err != nil {
+				log.Fatalf("Internal error: %v", err)
+			}
 		} else {
 			logger.Fatalln("No query provided in non-self comparison.")
 		}
@@ -174,9 +181,9 @@ func main() {
 		}
 		return m
 	}
-	pa := []*pals.PALS{pals.New(target, query, selfCompare, m(), threads, tubeOffset, mem, logger)}
+	pa := []*pals.PALS{pals.New(target.Seq, query.Seq, selfCompare, m(), threads, tubeOffset, mem, logger)}
 	if threads > 1 {
-		pa = append(pa, pals.New(target, query, selfCompare, m(), threads, tubeOffset, mem, logger))
+		pa = append(pa, pals.New(target.Seq, query.Seq, selfCompare, m(), threads, tubeOffset, mem, logger))
 	}
 
 	if err := pa[0].Optimise(minHitLen, minId); err != nil {
