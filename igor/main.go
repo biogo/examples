@@ -50,15 +50,15 @@ type strandEdge struct {
 
 func main() {
 	var (
-		source *gff.Reader
-		out    *gff.Writer
-		err    error
+		in  *gff.Reader
+		out *gff.Writer
+		err error
 	)
 
 	var (
-		sourceName = flag.String("source", "", "Filename for source annotation.")
-		outName    = flag.String("out", "", "Filename for output. Defaults to stdout.")
-		refName    = flag.String("ref", "", "Filename of fasta file containing reference sequence.")
+		inName  = flag.String("in", "", "Filename for input.")
+		outName = flag.String("out", "", "Filename for output. Defaults to stdout.")
+		refName = flag.String("ref", "", "Filename of fasta file containing reference sequence.")
 
 		epsilon = flag.Float64("epsilon", 0.15, "Tolerance for clustering.")
 		effort  = flag.Int("effort", 5, "Number of attempts for clustering.")
@@ -80,16 +80,16 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *sourceName == "" {
+	if *inName == "" {
 		fmt.Fprintln(os.Stderr, "Reading PALS features from stdin.")
-		source = gff.NewReader(os.Stdin)
-	} else if source, err = gff.NewReaderName(*sourceName); err != nil {
+		in = gff.NewReader(os.Stdin)
+	} else if in, err = gff.NewReaderName(*inName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 		os.Exit(1)
 	} else {
-		fmt.Fprintf(os.Stderr, "Reading PALS features from `%s'.\n", *sourceName)
+		fmt.Fprintf(os.Stderr, "Reading PALS features from `%s'.\n", *inName)
 	}
-	defer source.Close()
+	defer in.Close()
 
 	if *outName == "" {
 		fmt.Fprintln(os.Stderr, "Writing to stdout.")
@@ -106,7 +106,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, " Generating piles ...\n")
 	piler := pals.NewPiler(0)
 	for {
-		rep, err := source.Read()
+		rep, err := in.Read()
 		if err != nil {
 			if err != io.EOF {
 				fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
