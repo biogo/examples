@@ -1,12 +1,20 @@
+// Copyright ©2013 The bíogo Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// brahma performs annotation of GFF intervals produced by PALS/PILER, taking
+// annotation information from a GFF file generated from RepeatMasker output.
 package main
 
 import (
+	"bytes"
+	"code.google.com/p/biogo.interval"
+	nfeat "code.google.com/p/biogo/exp/feat"
 	"code.google.com/p/biogo/feat"
-	"code.google.com/p/biogo/interval"
 	"code.google.com/p/biogo/io/featio/gff"
 	"code.google.com/p/biogo/util"
+
 	"container/heap"
-	"encoding/gob"
 	"flag"
 	"fmt"
 	"os"
@@ -15,113 +23,146 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unsafe"
 )
 
 const (
 	maxAnnotations   = 8
 	annotationLength = 256
-	mapLength        = 20
-	maxMargin        = 0.05
+	mapLen           = 20
+	maxMargin        = 1 / mapLen
 )
 
 var (
 	minOverlap float64
 )
 
-type RepeatRecord struct {
-	Name, Class      string
-	Start, End, Left int
+type trees map[string]*interval.IntTree
+
+type Contig string
+
+func (c Contig) Start() int              { return 0 }
+func (c Contig) End() int                { return 0 }
+func (c Contig) Len() int                { return 0 }
+func (c Contig) Name() string            { return string(c) }
+func (c Contig) Description() string     { return "Contig" }
+func (c Contig) Location() nfeat.Feature { return nil }
+
+type Location struct {
+	Left, Right int
+	Loc         nfeat.Feature
 }
 
-func (self *RepeatRecord) Parse(annot string) {
+func (l Location) Start() int              { return l.Left }
+func (l Location) End() int                { return l.Right }
+func (l Location) Len() int                { return l.Right - l.Left }
+func (l Location) Name() string            { return fmt.Sprintf("%s:[%d,%d)", l.Loc.Name(), l.Left, l.Right) }
+func (l Location) Description() string     { return "Repeat" }
+func (l Location) Location() nfeat.Feature { return l.Loc }
+
+type RepeatRecord struct {
+	Location
+
+	Name, Class string
+	Left, Right int
+	Remain      int
+}
+
+func (rr *RepeatRecord) Overlap(b interval.IntRange) bool {
+	return rr.Location.Right > b.Start && rr.Location.Left < b.End
+}
+func (rr *RepeatRecord) ID() uintptr { return uintptr(unsafe.Pointer(rr)) }
+func (rr *RepeatRecord) Range() interval.IntRange {
+	return interval.IntRange{rr.Location.Left, rr.Location.Right}
+}
+
+func (rr *RepeatRecord) Parse(annot string) {
 	fields := strings.Split(annot, " ")
 
-	self.Name = fields[1]
-	self.Class = fields[2]
+	rr.Name = fields[1]
+	rr.Class = fields[2]
 	if fields[3] != "." {
-		self.Start, _ = strconv.Atoi(fields[3])
+		rr.Left, _ = strconv.Atoi(fields[3])
 	} else {
-		self.Start = -1
+		rr.Left = -1
 	}
 	if fields[4] != "." {
-		self.End, _ = strconv.Atoi(fields[4])
+		rr.Right, _ = strconv.Atoi(fields[4])
 	} else {
-		self.End = -1
+		rr.Right = -1
 	}
 	if fields[5] != "." {
-		self.Left, _ = strconv.Atoi(fields[5])
+		rr.Remain, _ = strconv.Atoi(fields[5])
 	} else {
-		self.Left = -1
+		rr.Remain = -1
 	}
+}
+
+type RepeatQuery struct {
+	left, right int
+	overlap     int
+}
+
+func (rq RepeatQuery) Overlap(b interval.IntRange) bool {
+	return rq.right > b.Start+rq.overlap && rq.left < b.End-rq.overlap
 }
 
 type Match struct {
-	Interval *interval.Interval
-	Overlap  int
-	Strand   int8
+	Repeat  *RepeatRecord
+	Overlap int
+	Strand  int8
 }
 
 type Matches []Match
 
-func (self Matches) Len() int {
-	return len(self)
+func (m Matches) Len() int {
+	return len(m)
+}
+func (m Matches) Swap(i, j int) {
+	m[i], m[j] = m[j], m[i]
 }
 
-func (self *Matches) Swap(i, j int) {
-	(*self)[i], (*self)[j] = (*self)[j], (*self)[i]
-}
+type Overlap struct{ *Matches }
 
-type Overlap struct {
-	*Matches
+func (o Overlap) Less(i, j int) bool {
+	return (*o.Matches)[i].Overlap < (*o.Matches)[j].Overlap
 }
-
-func (self Overlap) Less(i, j int) bool {
-	return (*self.Matches)[i].Overlap < (*self.Matches)[j].Overlap
-}
-
-func (self *Overlap) Pop() interface{} {
-	*(*self).Matches = (*(*self).Matches)[:len(*(*self).Matches)-1]
+func (o Overlap) Pop() interface{} {
+	*o.Matches = (*o.Matches)[:len(*o.Matches)-1]
 	return nil
 }
-
-func (self *Overlap) Push(x interface{}) {
-	*(*self).Matches = append(*(*self).Matches, x.(Match))
+func (o Overlap) Push(x interface{}) {
+	*o.Matches = append(*o.Matches, x.(Match))
 }
 
-type Start struct {
-	*Matches
-}
+type Start struct{ Matches }
 
-func (self Start) Less(i, j int) bool {
-	if (*self.Matches)[i].Strand == 1 {
-		return (*self.Matches)[i].Interval.Start() < (*self.Matches)[j].Interval.Start()
+func (s Start) Less(i, j int) bool {
+	if s.Matches[i].Strand == 1 {
+		return s.Matches[i].Repeat.Start() < s.Matches[j].Repeat.Start()
 	}
-	return (*self.Matches)[i].Interval.Start() > (*self.Matches)[j].Interval.Start()
+	return s.Matches[i].Repeat.Start() > s.Matches[j].Repeat.Start()
 }
 
 func main() {
 	var (
-		target    *gff.Reader
-		source    *gff.Reader
-		out       *gff.Writer
-		indexFile *os.File
-		e         error
-		store     bool
+		target *gff.Reader
+		source *gff.Reader
+		out    *gff.Writer
+		err    error
 	)
 
 	targetName := flag.String("target", "", "Filename for input to be annotated. Defaults to stdin.")
 	sourceName := flag.String("source", "", "Filename for source annotation.")
-	indexName := flag.String("index", "", "Filename for index cache.")
 	outName := flag.String("out", "", "Filename for output. Defaults to stdout.")
 	flag.Float64Var(&minOverlap, "overlap", 0.05, "Overlap between features.")
 	threads := flag.Int("threads", 2, "Number of threads to use.")
-	bufferLen := flag.Int("buffer", 1000, "Length of ouput buffer.")
+	bufferLen := flag.Int("buffer", 10, "Length of ouput buffer.")
 	help := flag.Bool("help", false, "Print this usage message.")
 
 	flag.Parse()
 
 	runtime.GOMAXPROCS(*threads)
-	fmt.Fprintf(os.Stderr, "Using %d threads.\n", runtime.GOMAXPROCS(0))
 
 	if *help || *sourceName == "" {
 		flag.Usage()
@@ -131,69 +172,61 @@ func main() {
 	if *targetName == "" {
 		fmt.Fprintln(os.Stderr, "Reading PALS features from stdin.")
 		target = gff.NewReader(os.Stdin)
-	} else if target, e = gff.NewReaderName(*targetName); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", e)
+	} else if target, err = gff.NewReaderName(*targetName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 		os.Exit(0)
 	} else {
 		fmt.Fprintf(os.Stderr, "Reading target features from `%s'.\n", *targetName)
 	}
 	defer target.Close()
 
-	switch {
-	case *indexName == "" && *sourceName == "":
-		fmt.Fprintln(os.Stderr, "No source or index provided.")
+	if source, err = gff.NewReaderName(*sourceName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
 		os.Exit(0)
-	case *indexName != "" && *sourceName == "":
-		if indexFile, e = os.Open(*indexName); e != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.\n", e)
-			os.Exit(0)
-		}
-		defer indexFile.Close()
-		store = false
-	case *indexName != "" && *sourceName != "":
-		if indexFile, e = os.Create(*indexName); e != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.\n", e)
-			os.Exit(0)
-		}
-		defer indexFile.Close()
-		store = true
-		fallthrough
-	case *indexName == "" && *sourceName != "":
-		if source, e = gff.NewReaderName(*sourceName); e != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.\n", e)
-			os.Exit(0)
-		}
-		fmt.Fprintf(os.Stderr, "Reading annotation features from `%s'.\n", *sourceName)
-		defer source.Close()
 	}
+	fmt.Fprintf(os.Stderr, "Reading annotation features from `%s'.\n", *sourceName)
+	defer source.Close()
 
 	if *outName == "" {
 		fmt.Fprintln(os.Stderr, "Writing annotation to stdout.")
 		out = gff.NewWriter(os.Stdout, 2, 60, false)
-	} else if out, e = gff.NewWriterName(*outName, 2, 60, true); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", e)
+	} else if out, err = gff.NewWriterName(*outName, 2, 60, true); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 	} else {
 		fmt.Fprintf(os.Stderr, "Writing annotation to `%s'.\n", *outName)
 	}
 	defer out.Close()
 
-	intervalTree := interval.NewTree()
+	ts := make(trees)
 
-	for count := 0; ; count++ {
+	for {
 		repeat, err := source.Read()
 		if err != nil {
 			break
 		} else {
-			fmt.Fprintf(os.Stderr, "Line: %d\r", count)
-			repData := &RepeatRecord{}
+			repData := &RepeatRecord{
+				Location: Location{
+					Left:  repeat.Start,
+					Right: repeat.End,
+					Loc:   Contig(repeat.Location),
+				},
+			}
 			repData.Parse(repeat.Attributes)
-			repInterval, err := interval.New(string(repeat.Location), repeat.Start, repeat.End, 0, *repData)
-			if err == nil {
-				intervalTree.Insert(repInterval)
+
+			if t, ok := ts[repeat.Location]; ok {
+				err = t.Insert(repData, true)
 			} else {
-				fmt.Fprintf(os.Stderr, "Feature has end < start: %v\n", repeat)
+				t = &interval.IntTree{}
+				err = t.Insert(repData, true)
+				ts[repeat.Location] = t
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Insertion error: %v with repeat: %v\n", err, repeat)
 			}
 		}
+	}
+	for _, t := range ts {
+		t.AdjustRanges()
 	}
 
 	process := make(chan *feat.Feature)
@@ -206,7 +239,7 @@ func main() {
 	}
 	for i := 0; i < *threads-1; i++ {
 		processWg.Add(1)
-		go processServer(intervalTree, process, buffer, processWg)
+		go processServer(ts, process, buffer, processWg)
 	}
 
 	//output server
@@ -228,158 +261,162 @@ func main() {
 		}
 	}
 
-	if store {
-		enc := gob.NewEncoder(indexFile)
-		err := enc.Encode(intervalTree)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-			os.Exit(0)
-		}
-	}
-
 	processWg.Wait()
 	close(buffer)
 	outputWg.Wait()
 }
 
-func processServer(index interval.Tree, queue, output chan *feat.Feature, wg *sync.WaitGroup) {
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func processServer(index trees, queue, output chan *feat.Feature, wg *sync.WaitGroup) {
 	defer wg.Done()
 	var (
-		buffer      []byte   = make([]byte, 0, annotationLength)
-		annotations Matches  = make(Matches, 0, maxAnnotations+1)
-		o           *Overlap = &Overlap{&annotations}
-		prefix      string   = ` ; Annot "`
-		blank       string   = prefix + strings.Repeat("-", mapLength)
-		overlap     int
+		prefix = ` ; Annot "`
+		blank  = []byte(prefix + strings.Repeat("-", mapLen))
+
+		buffer  = make([]byte, 0, annotationLength)
+		mapping = buffer[len(prefix) : len(prefix)+mapLen]
+		annots  = make(Matches, 0, maxAnnotations+1)
+		o       = Overlap{&annots}
+		overlap int
 	)
 
-	for feature := range queue {
-		annotations = annotations[:0]
-		heap.Init(&Overlap{&annotations})
-		buffer = buffer[:0]
-		buffer = append(buffer, []byte(blank)...)
-		query, err := interval.New(string(feature.Location), feature.Start, feature.End, 0, nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Feature has end < start: %v\n", feature)
-			continue
-		} else {
-			overlap = int(float64(feature.Len()) * minOverlap)
-			if results := index.Intersect(query, overlap); results != nil {
-				for hit := range results {
-					o.Push(Match{
-						Interval: hit,
-						Overlap:  util.Min(hit.End(), query.End()) - util.Max(hit.Start(), query.Start()),
-						Strand:   feature.Strand,
-					})
-					if len(annotations) > maxAnnotations {
-						o.Pop()
-					}
+	for f := range queue {
+		overlap = int(float64(f.Len()) * minOverlap)
+		annots = annots[:0] // Obviates heap initialisation.
+		buffer = buffer[:len(blank)]
+		copy(buffer, blank)
+
+		t, ok := index[f.Location]
+		if ok {
+			t.DoMatching(func(hit interval.IntInterface) (done bool) {
+				r := hit.Range()
+				heap.Push(o, Match{
+					Repeat:  hit.(*RepeatRecord),
+					Overlap: min(r.End, f.End) - max(r.Start, f.Start),
+					Strand:  f.Strand,
+				})
+				if len(annots) > maxAnnotations {
+					heap.Pop(o)
 				}
-			}
+				return
+			}, RepeatQuery{f.Start, f.End, overlap})
 		}
-		if len(annotations) > 0 {
-			sort.Sort(&Start{&annotations})
-			buffer = makeAnnotation(feature, annotations, len(prefix), buffer)
+
+		if len(annots) > 1 {
+			sort.Sort(Start{annots})
+		}
+		if len(annots) > 0 {
+			buffer = makeAnnot(f, annots, mapping, bytes.NewBuffer(buffer))
 		}
 
 		buffer = append(buffer, '"')
-		feature.Attributes += string(buffer)
-		output <- feature
+		f.Attributes += string(buffer)
+
+		output <- f
 	}
 }
 
-func makeAnnotation(feature *feat.Feature, annotations Matches, prefixLen int, buffer []byte) []byte {
-	var (
-		annot                                []byte = buffer[prefixLen:]
-		repRecord                            RepeatRecord
-		repLocation                          *interval.Interval
-		start, end, length                   int
-		repStart, repEnd, repLeft, repLength int
-		leftMargin, rightMargin              float64
-		leftEnd, rightEnd                    bool
-		mapStart, mapEnd                     int
-		fullRepLength, repMissing            int
-		i                                    int
-		cLower, cUpper                       byte
-		p                                    string
-	)
+func makeAnnot(f *feat.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []byte {
+	var leftMargin, rightMargin float64
+	scale := float64(mapLen) / float64(f.Len())
+	for i, ann := range m {
+		var (
+			rep      = ann.Repeat
+			location = rep.Location
+			start    = max(location.Start(), f.Start)
+			end      = min(location.End(), f.End)
+		)
 
-	length = feature.Len()
-
-	for annotIndex, repeat := range annotations {
-		repRecord = repeat.Interval.Meta.(RepeatRecord)
-		repLocation = repeat.Interval
-		start = util.Max(repLocation.Start(), feature.Start)
-		end = util.Min(repLocation.End(), feature.End)
-
-		if repStart = repRecord.Start; repStart != -1 {
-			repEnd = repRecord.End
-			repLeft = repRecord.Left
-			repLength = repStart + repLeft - 1
-			if repLength <= 0 {
-				repLength = 9999
+		var consRemain = 0
+		if consStart := rep.Left; consStart != -1 {
+			consEnd := rep.Right
+			consRemain = rep.Remain
+			repLen := consStart + consRemain
+			if repLen <= 0 {
+				repLen = util.MaxInt
 			}
 
-			if repLocation.Start() < feature.Start {
-				repStart += feature.Start - repLocation.Start()
+			if location.Start() < f.Start {
+				consStart += f.Start - location.Start()
 			}
-			if repLocation.End() > feature.End {
-				repEnd -= repLocation.End() - feature.End
+			if location.End() > f.End {
+				consEnd -= location.End() - f.End
 			}
 
-			leftMargin = float64(repStart) / float64(repLength)
-			rightMargin = float64(repLeft) / float64(repLength)
-			leftEnd = (leftMargin <= maxMargin)
-			rightEnd = (rightMargin <= maxMargin)
+			leftMargin = float64(consStart) / float64(repLen)
+			rightMargin = float64(consRemain) / float64(repLen)
 		}
 
-		mapStart = ((start - feature.Start) * mapLength) / length
-		mapEnd = ((end - feature.Start) * mapLength) / length
+		mapStart := int(float64(start-f.Start)*scale + 0.5)
+		mapEnd := int(float64(end-f.Start)*scale + 0.5)
 
-		if feature.Strand == -1 {
-			mapStart, mapEnd = mapLength-mapEnd-1, mapLength-mapStart-1
+		if f.Strand == -1 {
+			mapStart, mapEnd = mapLen-mapEnd, mapLen-mapStart
 		}
 
-		if mapStart < 0 || mapStart >= mapLength || mapEnd < 0 || mapEnd >= mapLength {
-			fmt.Printf("mapStart: %d, mapEnd: %d, mapLength: %d\n", mapStart, mapEnd, mapLength)
-			panic("MakeAnnot: failed to map")
+		if mapStart < 0 || mapStart > mapLen || mapEnd < 0 || mapEnd > mapLen {
+			panic(fmt.Sprintf("brahma: failed to map: mapStart: %d, mapEnd: %d, mapLen: %d\n",
+				mapStart, mapEnd, mapLen))
 		}
 
-		cLower = 'a' + byte(annotIndex)
-		cUpper = 'A' + byte(annotIndex)
+		if mapStart < mapEnd {
+			cLower := 'a' + byte(i)
+			cUpper := 'A' + byte(i)
 
-		if leftEnd {
-			annot[mapStart] = cUpper
-		} else {
-			annot[mapStart] = cLower
-		}
-
-		for i = mapStart + 1; i <= mapEnd-1; i++ {
-			annot[i] = cLower
-		}
-
-		if rightEnd {
-			annot[mapEnd] = cUpper
-		} else {
-			annot[mapEnd] = cLower
-		}
-
-		buffer = append(buffer, ' ')
-		buffer = append(buffer, []byte(repRecord.Name)...)
-
-		if repRecord.Start >= 0 {
-			fullRepLength = repRecord.End + repLeft
-			repMissing = repRecord.Start + repLeft
-			if feature.Start > repLocation.Start() {
-				repMissing += feature.Start - repLocation.Start()
+			if leftMargin <= maxMargin && rep.Left != -1 {
+				mapping[mapStart] = cUpper
+			} else {
+				mapping[mapStart] = cLower
 			}
-			if repLocation.End() > feature.End {
-				repMissing += repLocation.End() - feature.End
+
+			if mapEnd-mapStart > 1 {
+				seg := mapping[mapStart+1 : mapEnd-1]
+				for p := range seg {
+					seg[p] = cLower
+				}
 			}
-			p = fmt.Sprintf("(%.0f%%)", ((float64(fullRepLength)-float64(repMissing))*100)/float64(fullRepLength))
-			buffer = append(buffer, []byte(p)...)
+
+			if mapEnd-1 != mapStart {
+				if rightMargin <= maxMargin && rep.Left != -1 {
+					mapping[mapEnd-1] = cUpper
+				} else {
+					mapping[mapEnd-1] = cLower
+				}
+			} else if rightMargin <= maxMargin && rep.Left != -1 {
+				mapping[mapEnd-1] &^= ('a' - 'A') // Uppercase has priority - truncation is indicated by fractional rep information.
+			}
+		}
+
+		buf.WriteByte(' ')
+		buf.WriteString(rep.Name)
+
+		if rep.Left >= 0 {
+			var (
+				full    = float64(rep.Right + consRemain)
+				missing = float64(rep.Left + consRemain)
+			)
+			if f.Start > location.Start() {
+				missing += float64(f.Start - location.Start())
+			}
+			if location.End() > f.End {
+				missing += float64(location.End() - f.End)
+			}
+			fmt.Fprintf(buf, "(%.0f%%)", ((full-missing)*100)/full)
 		}
 	}
 
-	return buffer
+	return buf.Bytes()
 }

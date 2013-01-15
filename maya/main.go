@@ -1,28 +1,47 @@
-// Copyright ©2011-2012 Dan Kortschak <dan.kortschak@adelaide.edu.au>
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// Copyright ©2013 The bíogo Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
+// maya reads a collection of motif features from a BED file and finds motifs
+// in this collection that fall within regions specified in a second BED file.
+// The mean and variance of motif locations of motifs found found is reported.
 package main
 
 import (
-	"code.google.com/p/biogo/interval"
+	"code.google.com/p/biogo.interval"
 	"code.google.com/p/biogo/io/featio/bed"
 	"flag"
 	"fmt"
 	"math"
 	"os"
+	"unsafe"
 )
+
+type trees map[string]*interval.IntTree
+
+type Motif struct {
+	Start, End int
+	Contig     string
+}
+
+func (m *Motif) Overlap(b interval.IntRange) bool {
+	return m.End > b.Start && m.Start < b.End
+}
+func (m *Motif) ID() uintptr              { return uintptr(unsafe.Pointer(m)) }
+func (m *Motif) Range() interval.IntRange { return interval.IntRange{m.Start, m.End} }
+func (m *Motif) String() string           { return fmt.Sprintf("%s\t%d\t%d", m.Contig, m.Start, m.End) }
+
+type Region struct {
+	Start, End int
+	Contig     string
+}
+
+func (r *Region) Overlap(b interval.IntRange) bool {
+	return r.Start <= b.Start && b.End <= r.End
+}
+func (r *Region) ID() uintptr              { return uintptr(unsafe.Pointer(r)) }
+func (r *Region) Range() interval.IntRange { return interval.IntRange{r.Start, r.End} }
+func (r *Region) String() string           { return fmt.Sprintf("%s\t%d\t%d", r.Contig, r.Start, r.End) }
 
 func main() {
 	motifName := flag.String("motif", "", "Filename for motif file.")
@@ -63,20 +82,30 @@ func main() {
 	defer region.Close()
 
 	// Read in motif features and build interval tree to search
-	intervalTree := interval.NewTree()
+	ts := make(trees)
 
 	for line := 1; ; line++ {
 		motifLine, err := motif.Read()
 		if err != nil {
 			break
-		} else {
-			motifInterval, err := interval.New(string(motifLine.Location), motifLine.Start, motifLine.End, 0, nil)
-			if err == nil {
-				intervalTree.Insert(motifInterval)
-			} else {
-				fmt.Fprintf(os.Stderr, "Line: %d: Feature has end < start: %v\n", line, motifLine)
-			}
 		}
+
+		motif := &Region{
+			Start:  motifLine.Start,
+			End:    motifLine.End,
+			Contig: motifLine.Location,
+		}
+		if t, ok := ts[motifLine.Location]; ok {
+			err = t.Insert(motif, true)
+		} else {
+			t = &interval.IntTree{}
+			err = t.Insert(motif, true)
+			ts[motif.Contig] = t
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Insertion error: %v with motif: %v\n", err, motif)
+		}
+
 	}
 
 	// Read in region features and search for motifs within region
@@ -91,34 +120,43 @@ func main() {
 		if err != nil {
 			break
 		} else {
+			if regionLine.Start > regionLine.End {
+				fmt.Fprintf(os.Stderr, "Line: %d: Feature has end < start: %v\n", line, regionLine)
+				continue
+			}
 			regionMidPoint := float64(regionLine.Start+regionLine.End) / 2
-			regionInterval, err := interval.New(string(regionLine.Location), regionLine.Start, regionLine.End, 0, regionMidPoint)
-			if err == nil {
-				if *verbose {
-					fmt.Fprintf(os.Stderr, "%s\t%d\t%d\n", regionLine.Location, regionLine.Start, regionLine.End)
-				}
-				sumOfDiffs, sumOfSquares, mean, oldmean, n := 0., 0., 0., 0., 0.
-				for intersector := range intervalTree.Within(regionInterval, 0) {
-					motifMidPoint := float64(intersector.Start()+intersector.End()) / 2
+			region := &Region{
+				Start:  regionLine.Start,
+				End:    regionLine.End,
+				Contig: regionLine.Location,
+			}
+			if *verbose {
+				fmt.Fprintln(os.Stderr, region)
+			}
+			sumOfDiffs, sumOfSquares, mean, oldmean, n := 0., 0., 0., 0., 0.
+
+			if t, ok := ts[region.Contig]; ok {
+				t.DoMatching(func(m interval.IntInterface) (done bool) {
+					r := m.Range()
+					mid := float64(r.Start+r.End) / 2
 					if *verbose {
-						fmt.Fprintf(os.Stderr, "\t%s\t%d\t%d\n", intersector.Segment(), intersector.Start(), intersector.End())
+						fmt.Fprintf(os.Stderr, "\t%s\n", m)
 					}
 
 					// The Method of Provisional Means	
 					n++
-					mean = oldmean + (motifMidPoint-oldmean)/n
-					sumOfSquares += (motifMidPoint - oldmean) * (motifMidPoint - mean)
+					mean = oldmean + (mid-oldmean)/n
+					sumOfSquares += (mid - oldmean) * (mid - mean)
 					oldmean = mean
 
-					sumOfDiffs += math.Abs(motifMidPoint - regionMidPoint)
-				}
-				fmt.Printf("%s\t%d\t%d\t%0.f\t%0.f\t%f\t%f\n",
-					regionLine.Location, regionLine.Start, regionLine.End,
-					n, mean, math.Sqrt(sumOfSquares)/(n-1), sumOfDiffs/n)
-			} else {
-				fmt.Fprintf(os.Stderr, "Line: %d: Feature has end < start: %v\n", line, regionLine)
+					sumOfDiffs += math.Abs(mid - regionMidPoint)
+
+					return
+				}, region)
 			}
+			fmt.Printf("%s\t%d\t%d\t%0.f\t%0.f\t%f\t%f\n",
+				regionLine.Location, regionLine.Start, regionLine.End,
+				n, mean, math.Sqrt(sumOfSquares)/(n-1), sumOfDiffs/n)
 		}
 	}
-
 }
