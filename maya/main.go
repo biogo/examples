@@ -63,23 +63,23 @@ func main() {
 	}
 
 	// Open files
-	motif, err := bed.NewReaderName(*motifName, 3)
+	motifFile, err := os.Open(*motifName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 		os.Exit(0)
-	} else {
-		fmt.Fprintf(os.Stderr, "Reading motif features from `%s'.\n", *motifName)
 	}
-	defer motif.Close()
+	defer motifFile.Close()
+	motif := bed.NewReader(motifFile, 3)
+	fmt.Fprintf(os.Stderr, "Reading motif features from `%s'.\n", *motifName)
 
-	region, err := bed.NewReaderName(*regionName, 3)
+	regionFile, err := os.Open(*regionName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 		os.Exit(0)
-	} else {
-		fmt.Fprintf(os.Stderr, "Reading region features from `%s'.\n", *regionName)
 	}
-	defer region.Close()
+	defer regionFile.Close()
+	region := bed.NewReader(regionFile, 3)
+	fmt.Fprintf(os.Stderr, "Reading region features from `%s'.\n", *regionName)
 
 	// Read in motif features and build interval tree to search
 	ts := make(trees)
@@ -91,11 +91,11 @@ func main() {
 		}
 
 		motif := &Region{
-			Start:  motifLine.Start,
-			End:    motifLine.End,
-			Contig: motifLine.Location,
+			Start:  motifLine.Start(),
+			End:    motifLine.End(),
+			Contig: fmt.Sprint(motifLine.Location()),
 		}
-		if t, ok := ts[motifLine.Location]; ok {
+		if t, ok := ts[motif.Contig]; ok {
 			err = t.Insert(motif, true)
 		} else {
 			t = &interval.IntTree{}
@@ -120,16 +120,16 @@ func main() {
 		if err != nil {
 			break
 		} else {
-			if regionLine.Start > regionLine.End {
+			if regionLine.Start() > regionLine.End() {
 				fmt.Fprintf(os.Stderr, "Line: %d: Feature has end < start: %v\n", line, regionLine)
 				continue
 			}
-			regionMidPoint := float64(regionLine.Start+regionLine.End) / 2
 			region := &Region{
-				Start:  regionLine.Start,
-				End:    regionLine.End,
-				Contig: regionLine.Location,
+				Start:  regionLine.Start(),
+				End:    regionLine.End(),
+				Contig: fmt.Sprint(regionLine.Location()),
 			}
+			regionMidPoint := float64(region.Start+region.End) / 2
 			if *verbose {
 				fmt.Fprintln(os.Stderr, region)
 			}
@@ -155,7 +155,7 @@ func main() {
 				}, region)
 			}
 			fmt.Printf("%s\t%d\t%d\t%0.f\t%0.f\t%f\t%f\n",
-				regionLine.Location, regionLine.Start, regionLine.End,
+				region.Contig, region.Start, region.End,
 				n, mean, math.Sqrt(sumOfSquares)/(n-1), sumOfDiffs/n)
 		}
 	}
