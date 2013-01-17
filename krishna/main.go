@@ -148,11 +148,12 @@ func main() {
 	if outFile == "" {
 		writer = pals.NewWriter(os.Stdout, 2, 60, false)
 	} else {
-		var err error
-		writer, err = pals.NewWriterName(outFile, 2, 60, false)
+		out, err := os.Create(outFile)
 		if err != nil {
 			log.Fatalf("Could not open output file: %v", err)
 		}
+		defer out.Close()
+		writer = pals.NewWriter(out, 2, 60, false)
 	}
 	defer writer.Close()
 
