@@ -18,9 +18,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 )
@@ -65,6 +69,9 @@ func main() {
 
 		minFamily = flag.Int("famsize", 2, "Minimum number of clusters per family (must be >= 2).")
 
+		cpuprofile = flag.String("cpuprofile", "", "Write cpu profile to this file.")
+		webprofile = flag.String("webprofile", "", "Run web-based profiling on this host:port.")
+
 		help = flag.Bool("help", false, "Print usage message.")
 	)
 	flag.IntVar(&aligner, "aligner", 1, "Which aligner to use: 1 - muscle, 2 - mafft")
@@ -78,6 +85,22 @@ func main() {
 	if *help {
 		flag.Usage()
 		os.Exit(0)
+	}
+
+	if *webprofile != "" {
+		go func() {
+			log.Println(http.ListenAndServe(*webprofile, nil))
+		}()
+	}
+	if *cpuprofile != "" {
+		profile, err := os.Create(*cpuprofile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v.", err)
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "Writing CPU profile data to %s\n", *cpuprofile)
+		pprof.StartCPUProfile(profile)
+		defer pprof.StopCPUProfile()
 	}
 
 	if *inName == "" {
