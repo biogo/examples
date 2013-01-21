@@ -2,11 +2,11 @@ package main
 
 import (
 	"code.google.com/p/biogo.matrix"
-	"code.google.com/p/biogo/exp/seqio/fasta"
+	"code.google.com/p/biogo/alphabet"
 	"code.google.com/p/biogo/index/kmerindex"
+	"code.google.com/p/biogo/io/seqio/fasta"
+	"code.google.com/p/biogo/seq/linear"
 
-	"code.google.com/p/biogo/exp/alphabet"
-	"code.google.com/p/biogo/exp/seq/linear"
 	"flag"
 	"fmt"
 	"math"

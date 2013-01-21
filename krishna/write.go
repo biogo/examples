@@ -3,6 +3,7 @@ package main
 import (
 	"code.google.com/p/biogo/align/pals"
 	"code.google.com/p/biogo/align/pals/dp"
+
 	"sync"
 )
 

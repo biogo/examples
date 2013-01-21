@@ -8,12 +8,12 @@ package main
 
 import (
 	"code.google.com/p/biogo.interval"
-	"code.google.com/p/biogo/exp/feat"
+	"code.google.com/p/biogo/feat"
 	"code.google.com/p/biogo/io/featio/gff"
+	"code.google.com/p/biogo/seq"
 	"code.google.com/p/biogo/util"
 
 	"bytes"
-	"code.google.com/p/biogo/exp/seq"
 	"container/heap"
 	"flag"
 	"fmt"

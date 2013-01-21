@@ -3,7 +3,7 @@ package main
 import (
 	"code.google.com/p/biogo.cluster/kmeans"
 	"code.google.com/p/biogo/align/pals"
-	"code.google.com/p/biogo/exp/feat"
+	"code.google.com/p/biogo/feat"
 	"fmt"
 )
 
