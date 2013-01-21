@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"code.google.com/p/biogo.external/mafft"
 	"code.google.com/p/biogo.external/muscle"
 	"code.google.com/p/biogo.graph"
@@ -15,6 +14,8 @@ import (
 	"code.google.com/p/biogo/exp/seq/sequtils"
 	"code.google.com/p/biogo/exp/seqio/fasta"
 	"code.google.com/p/biogo/io/featio/gff"
+
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -49,7 +50,7 @@ const (
 
 type strandEdge struct {
 	graph.Edge
-	Strand int8
+	Strand seq.Strand
 }
 
 func main() {
@@ -96,7 +97,7 @@ func main() {
 		profile, err := os.Create(*cpuprofile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v.", err)
-			os.Exit(0)
+			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "Writing CPU profile data to %s\n", *cpuprofile)
 		pprof.StartCPUProfile(profile)
@@ -106,21 +107,26 @@ func main() {
 	if *inName == "" {
 		fmt.Fprintln(os.Stderr, "Reading PALS features from stdin.")
 		in = gff.NewReader(os.Stdin)
-	} else if in, err = gff.NewReaderName(*inName); err != nil {
+	} else if f, err := os.Open(*inName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 		os.Exit(1)
 	} else {
+		defer f.Close()
+		in = gff.NewReader(f)
 		fmt.Fprintf(os.Stderr, "Reading PALS features from `%s'.\n", *inName)
 	}
-	defer in.Close()
 
 	if *outName == "" {
 		fmt.Fprintln(os.Stderr, "Writing to stdout.")
-		out = gff.NewWriter(os.Stdout, 2, 60, false)
-	} else if out, err = gff.NewWriterName(*outName, 2, 60, true); err != nil {
+		out = gff.NewWriter(os.Stdout, 60, false)
+		out.Precision = 2
+	} else if f, err := os.Create(*outName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 		os.Exit(1)
 	} else {
+		defer f.Close()
+		out = gff.NewWriter(f, 60, true)
+		out.Precision = 2
 		fmt.Fprintf(os.Stderr, "Writing to `%s'.\n", *outName)
 	}
 	defer out.Close()
@@ -138,7 +144,7 @@ func main() {
 			break
 		}
 
-		p, err := pals.ExpandFeature(rep)
+		p, err := pals.ExpandFeature(rep.(*gff.Feature))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
 			os.Exit(1)

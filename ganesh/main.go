@@ -1,16 +1,15 @@
 package main
 
 import (
+	"code.google.com/p/biogo.matrix"
+
 	"bufio"
-	"code.google.com/p/biogo/matrix"
-	"code.google.com/p/biogo/matrix/sparse"
-	"code.google.com/p/biogo/nmf"
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"os"
-	"runtime"
 	"runtime/pprof"
 	"sort"
 	"strconv"
@@ -34,9 +33,7 @@ func main() {
 	iter := flag.Int("i", 1000, "iterations.")
 	rep := flag.Int("rep", 1, "Resample replicates.")
 	limit := flag.Int("time", 10, "time limit for NMF.")
-	sf := flag.Float64("sf", 0.01, "factor for sparcity of estimating matrices for NMF.")
 	tol := flag.Float64("tol", 0.001, "tolerance for NMF.")
-	threads := flag.Int("threads", 2, "number of threads to use.")
 	seed := flag.Int64("seed", -1, "seed for random number generator (-1 uses system clock).")
 	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to this file.")
 	help := flag.Bool("help", false, "print this usage message.")
@@ -45,16 +42,13 @@ func main() {
 
 	if *help {
 		flag.Usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 
-	runtime.GOMAXPROCS(*threads)
-	sparse.MaxProcs = *threads
-	fmt.Fprintf(os.Stderr, "Using %d threads.\n", runtime.GOMAXPROCS(0))
 	if *cpuprofile != "" {
 		if profile, e = os.Create(*cpuprofile); e != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v.", e)
-			os.Exit(0)
+			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "Writing CPU profile data to %s\n", *cpuprofile)
 		pprof.StartCPUProfile(profile)
@@ -66,7 +60,7 @@ func main() {
 		in = bufio.NewReader(os.Stdin)
 	} else if f, err := os.Open(*inName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(0)
+		os.Exit(1)
 	} else {
 		defer f.Close()
 		in = bufio.NewReader(f)
@@ -78,7 +72,7 @@ func main() {
 		out = bufio.NewWriter(os.Stdout)
 	} else if f, err := os.Create(*outName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(0)
+		os.Exit(1)
 	} else {
 		defer f.Close()
 		out = bufio.NewWriter(f)
@@ -91,7 +85,7 @@ func main() {
 
 	if line, err := in.ReadString('\n'); err != nil {
 		fmt.Fprintln(os.Stderr, "No table to read\n")
-		os.Exit(0)
+		os.Exit(1)
 	} else {
 		line = strings.TrimSpace(line)
 		colNames = strings.Split(line, "\t")
@@ -105,13 +99,13 @@ func main() {
 			line = strings.TrimSpace(line)
 			if row := strings.Split(line, *sep); len(row) != len(colNames)+1 {
 				fmt.Fprintf(os.Stderr, "Table row mismatch at line %d.\n", count)
-				os.Exit(0)
+				os.Exit(1)
 			} else {
 				rowData := make([]float64, len(row)-1)
 				for i, val := range row[1:] {
 					if rowData[i], e = strconv.ParseFloat(val, 64); e != nil {
 						fmt.Fprintf(os.Stderr, "Float conversion error %v at line %d element %d.\n", e, count, i)
-						os.Exit(0)
+						os.Exit(1)
 					}
 				}
 				rowNames = append(rowNames, row[0])
@@ -120,30 +114,25 @@ func main() {
 		}
 	}
 
-	var dataMatrix *sparse.Sparse
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v.", r)
-				os.Exit(0)
-			}
-		}()
-		dataMatrix = sparse.Matrix(array)
-	}()
+	mat, err := matrix.NewDense(array)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
+	}
 
 	f := func(i, j int, v float64) float64 {
-		if dataMatrix.At(i, j) != 0 {
+		if mat.At(i, j) != 0 {
 			return 1
 		}
 		return 0
 	}
-	nonZero := dataMatrix.Apply(f).Sum()
+	nonZero := mat.Apply(f, mat).Sum()
 
 	if *transpose {
 		colNames, rowNames = rowNames, colNames
-		dataMatrix = dataMatrix.T()
+		mat = mat.TDense(nil)
 	}
-	r, c := dataMatrix.Dims()
+	r, c := mat.Dims()
 
 	density := nonZero / float64(r*c)
 
@@ -153,22 +142,34 @@ func main() {
 	fmt.Fprintf(os.Stderr, "Using %v as random seed.\n", *seed)
 	rand.Seed(*seed)
 
-	rows, cols := dataMatrix.Dims()
+	rows, cols := mat.Dims()
 
-	fmt.Fprintf(os.Stderr, "Dimensions of matrix = (%v, %v)\nDensity = %.3f %%\n%v\n", r, c, (density)*100, dataMatrix)
+	fmt.Fprintf(os.Stderr, "Dimensions of matrix = (%v, %v)\nDensity = %.3f %%\n%v\n", r, c, (density)*100, mat)
 
 	for run := 0; run < *rep; run++ {
 		if *rep > 1 {
 			fmt.Fprintf(os.Stderr, "Replicate #%d\n", run+1)
 		}
-		Wo := sparse.Random(rows, *cat, density**sf)
-		Ho := sparse.Random(*cat, cols, density**sf)
 
-		W, H, ok := nmf.Factors(dataMatrix, Wo, Ho, *tol, *iter, time.Duration(*limit)*1e9)
+		posNorm := func() float64 { return math.Abs(rand.NormFloat64()) }
+
+		Wo, err := matrix.FuncDense(rows, *cat, 1, posNorm)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v.", err)
+			os.Exit(1)
+		}
+
+		Ho, err := matrix.FuncDense(*cat, cols, 1, posNorm)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v.", err)
+			os.Exit(1)
+		}
+
+		W, H, ok := matrix.Factors(mat, Wo, Ho, *tol, *iter, time.Duration(*limit)*1e9)
 
 		fmt.Fprintf(os.Stderr, "norm(H) = %v norm(W) = %v\n\nFinished = %v\n\n", H.Norm(matrix.Fro), W.Norm(matrix.Fro), ok)
 
-		printFeature(out, run, dataMatrix, W, H, rowNames, colNames)
+		printFeature(out, run, mat, W, H, rowNames, colNames)
 	}
 }
 
@@ -191,7 +192,7 @@ func (self WeightList) Less(i, j int) bool {
 	return self[i].weight > self[j].weight
 }
 
-func printFeature(out io.Writer, run int, V, W, H *sparse.Sparse, rowNames, colNames []string) {
+func printFeature(out io.Writer, run int, V, W, H matrix.Matrix, rowNames, colNames []string) {
 	patternCount, colCount := H.Dims()
 	rowCount, _ := W.Dims()
 

@@ -1,17 +1,19 @@
+// pairwise reads in sequence from two fasta files and reports the
+// Euclidian distance between the sequences' kmer distributions.
 package main
 
 import (
+	"code.google.com/p/biogo/exp/alphabet"
+	"code.google.com/p/biogo/exp/seq/linear"
+	"code.google.com/p/biogo/exp/seqio/fasta"
 	"code.google.com/p/biogo/index/kmerindex"
-	"code.google.com/p/biogo/io/seqio/fasta"
-	"code.google.com/p/biogo/seq"
+
 	"flag"
 	"fmt"
 	"os"
 )
 
 func main() {
-	var in1, in2 *fasta.Reader
-
 	inName1 := flag.String("1", "", "Filename for first input.")
 	inName2 := flag.String("2", "", "Filename for second input.")
 	k := flag.Int("k", 6, "kmer size.")
@@ -21,54 +23,61 @@ func main() {
 
 	if *help {
 		flag.Usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	var err error
 
-	if in1, err = fasta.NewReaderName(*inName1); err != nil {
+	f1, err := os.Open(*inName1)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(0)
+		os.Exit(1)
 	}
-	defer in1.Close()
+	defer f1.Close()
+	in1 := fasta.NewReader(f1, linear.NewSeq("", nil, alphabet.DNA))
 
-	if in2, err = fasta.NewReaderName(*inName2); err != nil {
+	f2, err := os.Open(*inName2)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(0)
+		os.Exit(1)
 	}
-	defer in2.Close()
+	defer f2.Close()
+	in2 := fasta.NewReader(f2, linear.NewSeq("", nil, alphabet.DNA))
 
 	var (
-		seq1, seq2             *seq.Seq
-		kmerFreqs1, kmerFreqs2 map[kmerindex.Kmer]float64
-		ok                     bool
+		kf1, kf2 map[kmerindex.Kmer]float64
+		ok       bool
 	)
 
-	if seq1, err = in1.Read(); err != nil {
-		os.Exit(0)
+	s1, err := in1.Read()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
-	if seq2, err = in2.Read(); err != nil {
-		os.Exit(0)
+	s2, err := in2.Read()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
-	if index, err := kmerindex.New(*k, seq1); err != nil {
+	if ki, err := kmerindex.New(*k, s1.(*linear.Seq)); err != nil {
 		fmt.Println(err)
-		os.Exit(0)
+		os.Exit(1)
 	} else {
-		if kmerFreqs1, ok = index.NormalisedKmerFrequencies(); !ok {
-			fmt.Printf("Unable to determine Kmer frequences for %s\n", seq1.ID)
-			os.Exit(0)
+		if kf1, ok = ki.NormalisedKmerFrequencies(); !ok {
+			fmt.Printf("Unable to determine Kmer frequences for %s\n", s1.Name())
+			os.Exit(1)
 		}
 	}
-	if index, err := kmerindex.New(*k, seq2); err != nil {
+	if ki, err := kmerindex.New(*k, s2.(*linear.Seq)); err != nil {
 		fmt.Println(err)
-		os.Exit(0)
+		os.Exit(1)
 	} else {
-		if kmerFreqs2, ok = index.NormalisedKmerFrequencies(); !ok {
-			fmt.Printf("Unable to determine Kmer frequences for %s\n", seq2.ID)
-			os.Exit(0)
+		if kf2, ok = ki.NormalisedKmerFrequencies(); !ok {
+			fmt.Printf("Unable to determine Kmer frequences for %s\n", s2.Name())
+			os.Exit(1)
 		}
 	}
 
-	fmt.Printf("Kmer distance between %s and %s is %f\n", seq1.ID, seq2.ID, kmerindex.Distance(kmerFreqs1, kmerFreqs2))
+	fmt.Printf("Kmer distance between %s and %s is %f\n", s1.Name(), s2.Name(), kmerindex.Distance(kf1, kf2))
 }

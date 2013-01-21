@@ -1,8 +1,13 @@
+// kmerdist performs an analysis on the kmer distribution of a set of sequences.
+// It returns summary statistics on the frequencies of kmers in the analysed sequences.
 package main
 
 import (
+	"code.google.com/p/biogo/exp/alphabet"
+	"code.google.com/p/biogo/exp/seq/linear"
+	"code.google.com/p/biogo/exp/seqio/fasta"
 	"code.google.com/p/biogo/index/kmerindex"
-	"code.google.com/p/biogo/io/seqio/fasta"
+
 	"flag"
 	"fmt"
 	"math"
@@ -71,60 +76,60 @@ func main() {
 
 	if *help {
 		flag.Usage()
-		os.Exit(1)
-	}
-
-	var (
-		in  *fasta.Reader
-		err error
-	)
-	if *inName == "" {
-		in = fasta.NewReader(os.Stdin)
-	} else if in, err = fasta.NewReaderName(*inName); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 		os.Exit(0)
 	}
-	defer in.Close()
+
+	var in *fasta.Reader
+	if *inName == "" {
+		in = fasta.NewReader(os.Stdin, linear.NewSeq("", nil, alphabet.DNA))
+	} else if f, err := os.Open(*inName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
+	} else {
+		in = fasta.NewReader(f, linear.NewSeq("", nil, alphabet.DNA))
+		defer f.Close()
+	}
 
 	fk := float64(*k)
 	fmt.Printf("ID\tn\tMean\tStDev\tnorm(Mean)\tnorm(StDev)\t95%% percentile\n")
 	for {
-		sequence, err := in.Read()
+		s, err := in.Read()
 		if err != nil {
-			os.Exit(0)
+			os.Exit(1)
 		} else {
-			index, err := kmerindex.New(*k, sequence)
+			ki, err := kmerindex.New(*k, s.(*linear.Seq))
 			if err != nil {
 				fmt.Println(err)
-				os.Exit(0)
-			} else {
-				if m, ok := index.KmerFrequencies(); ok {
-					r := make(Rank, 0, len(m))
-					var n, sumOfSquares, mean, oldmean, kmers float64
-					for _, c := range m {
-						fc := float64(c)
-						kmers += fc
-						r = append(r, c)
-						// The Method of Provisional Means	
+				os.Exit(1)
+			}
+			m, ok := ki.KmerFrequencies()
+			if ok {
+				r := make(Rank, 0, len(m))
+				var n, sumOfSquares, mean, oldmean, kmers float64
+				for _, c := range m {
+					fc := float64(c)
+					kmers += fc
+					r = append(r, c)
+
+					// The Method of Provisional Means	
+					n++
+					mean = oldmean + (fc-oldmean)/n
+					sumOfSquares += (fc - oldmean) * (fc - mean)
+					oldmean = mean
+				}
+				r.Init()
+				if *fill {
+					for n < math.Pow(4, fk) {
 						n++
-						mean = oldmean + (fc-oldmean)/n
-						sumOfSquares += (fc - oldmean) * (fc - mean)
+						mean = oldmean * (1 - 1/n)
+						sumOfSquares += oldmean * mean
 						oldmean = mean
 					}
-					r.Init()
-					if *fill {
-						for n < math.Pow(4, fk) {
-							n++
-							mean = oldmean * (1 - 1/n)
-							sumOfSquares += oldmean * mean
-							oldmean = mean
-						}
-					}
-					fl := float64(sequence.Len())
-					stdev := math.Sqrt(sumOfSquares / (n - 1))
-					fmt.Printf("%s\t%0.f\t%f\t%f\t%f\t%f\t%f\n",
-						sequence.ID, n, mean, stdev, mean/fl, stdev/fl, r.Percentile(*p)/kmers)
 				}
+				fl := float64(s.Len())
+				stdev := math.Sqrt(sumOfSquares / (n - 1))
+				fmt.Printf("%s\t%0.f\t%f\t%f\t%f\t%f\t%f\n",
+					s.Name(), n, mean, stdev, mean/fl, stdev/fl, r.Percentile(*p)/kmers)
 			}
 		}
 	}

@@ -1,13 +1,17 @@
+// krishna is a pure Go implementation of Edgar and Myers PALS tool.
 package main
 
 import (
 	"code.google.com/p/biogo/align/pals"
 	"code.google.com/p/biogo/align/pals/filter"
 	"code.google.com/p/biogo/morass"
+
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -46,6 +50,7 @@ var (
 	debug         bool
 	verbose       bool
 	cpuprofile    string
+	webprofile    string
 	logger        *log.Logger
 )
 
@@ -76,6 +81,7 @@ func init() {
 	flag.BoolVar(&verbose, "v", false, "Log additional information.")
 
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to this file.")
+	flag.StringVar(&webprofile, "webprofile", "", "Run web-based profiling on this host:port.")
 
 	help := flag.Bool("help", false, "Print this help message.")
 
@@ -83,7 +89,7 @@ func init() {
 
 	if *help {
 		flag.Usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	if maxMem == 0 {
@@ -115,11 +121,16 @@ func initLog(fileName string) {
 }
 
 func main() {
+	if webprofile != "" {
+		go func() {
+			log.Println(http.ListenAndServe(webprofile, nil))
+		}()
+	}
 	if cpuprofile != "" {
 		profile, err := os.Create(cpuprofile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v.", err)
-			os.Exit(0)
+			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "Writing CPU profile data to %s\n", cpuprofile)
 		pprof.StartCPUProfile(profile)

@@ -167,7 +167,7 @@ func main() {
 
 	if *help || *sourceName == "" {
 		flag.Usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	if *targetName == "" {
@@ -175,7 +175,7 @@ func main() {
 		target = gff.NewReader(os.Stdin)
 	} else if tf, err := os.Open(*targetName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(0)
+		os.Exit(1)
 	} else {
 		fmt.Fprintf(os.Stderr, "Reading target features from `%s'.\n", *targetName)
 		defer tf.Close()
@@ -185,7 +185,7 @@ func main() {
 	sf, err := os.Open(*sourceName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-		os.Exit(0)
+		os.Exit(1)
 	}
 	fmt.Fprintf(os.Stderr, "Reading annotation features from `%s'.\n", *sourceName)
 	defer sf.Close()

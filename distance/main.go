@@ -1,19 +1,21 @@
+// distance reads in a multiple fasta file and compares kmer frequency 
+// distributions for blocks of each sequece against the sequence average.
 package main
 
 import (
+	"code.google.com/p/biogo/exp/alphabet"
+	"code.google.com/p/biogo/exp/seq/linear"
+	"code.google.com/p/biogo/exp/seq/sequtils"
+	"code.google.com/p/biogo/exp/seqio/fasta"
 	"code.google.com/p/biogo/index/kmerindex"
-	"code.google.com/p/biogo/io/seqio/fasta"
+
 	"flag"
 	"fmt"
+	"io"
 	"os"
 )
 
 func main() {
-	var (
-		in *fasta.Reader
-		e  error
-	)
-
 	inName := flag.String("in", "", "Filename for input. Defaults to stdin.")
 	k := flag.Int("k", 6, "kmer size.")
 	chunk := flag.Int("chunk", 1000, "Chunk width.")
@@ -23,37 +25,48 @@ func main() {
 
 	if *help {
 		flag.Usage()
-		os.Exit(1)
-	}
-
-	if *inName == "" {
-		in = fasta.NewReader(os.Stdin)
-	} else if in, e = fasta.NewReaderName(*inName); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", e)
 		os.Exit(0)
 	}
-	defer in.Close()
 
+	var in *fasta.Reader
+	if *inName == "" {
+		in = fasta.NewReader(os.Stdin, linear.NewSeq("", nil, alphabet.DNA))
+	} else if f, err := os.Open(*inName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
+	} else {
+		in = fasta.NewReader(f, linear.NewSeq("", nil, alphabet.DNA))
+		defer f.Close()
+	}
+
+	sub := linear.NewSeq("", nil, alphabet.DNA)
 	for {
-		if sequence, err := in.Read(); err != nil {
-			os.Exit(0)
-		} else {
-			index, err := kmerindex.New(*k, sequence)
-			if err != nil {
-				fmt.Println(err)
-				os.Exit(0)
+		s, err := in.Read()
+		if err != nil {
+			if err != io.EOF {
+				fmt.Printf("Error: %v\n", err)
+				os.Exit(1)
 			}
-			if baseLine, ok := index.NormalisedKmerFrequencies(); ok {
-				for i := 0; (i+1)**chunk < sequence.Len(); i++ {
-					sub, _ := sequence.Trunc(i**chunk+1, (i+1)**chunk)
-					index, err = kmerindex.New(*k, sub)
-					if err != nil {
-						fmt.Println(err)
-						os.Exit(0)
-					}
-					if chunkFreqs, ok := index.NormalisedKmerFrequencies(); ok {
-						fmt.Printf("%s\t%d\t%f\n", sequence.ID, i**chunk, kmerindex.Distance(baseLine, chunkFreqs))
-					}
+			return
+		}
+
+		ki, err := kmerindex.New(*k, s.(*linear.Seq))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		baseLine, ok := ki.NormalisedKmerFrequencies()
+		if ok {
+			for i := 0; (i+1)**chunk < s.Len(); i++ {
+				sequtils.Truncate(sub, s, i**chunk+1, (i+1)**chunk)
+				ki, err = kmerindex.New(*k, sub)
+				if err != nil {
+					fmt.Println(err)
+					os.Exit(1)
+				}
+				if chunkFreqs, ok := ki.NormalisedKmerFrequencies(); ok {
+					fmt.Printf("%s\t%d\t%f\n", s.Name(), i**chunk, kmerindex.Distance(baseLine, chunkFreqs))
 				}
 			}
 		}

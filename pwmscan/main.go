@@ -1,13 +1,17 @@
+// pwmscan performs a position weight matrix scan of a set of sequences to
+// search for a motif.
 package main
 
 import (
-	"bufio"
 	"code.google.com/p/biogo/exp/alphabet"
+	"code.google.com/p/biogo/exp/seq"
 	"code.google.com/p/biogo/exp/seq/linear"
 	"code.google.com/p/biogo/exp/seq/multi"
 	"code.google.com/p/biogo/exp/seqio/fasta"
 	"code.google.com/p/biogo/io/featio/gff"
 	"code.google.com/p/biogo/pwm"
+
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -36,7 +40,12 @@ func main() {
 
 	flag.Parse()
 
-	if *help || *matName == "" {
+	if *help {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	if *matName == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -45,7 +54,7 @@ func main() {
 	if *num {
 		if mf, err = os.Open(*matName); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-			os.Exit(0)
+			os.Exit(1)
 		} else {
 			matin = bufio.NewReader(mf)
 		}
@@ -67,7 +76,7 @@ func main() {
 			for _, s := range fields {
 				if f, err := strconv.ParseFloat(s, 64); err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-					os.Exit(0)
+					os.Exit(1)
 				} else {
 					matrix[len(matrix)-1] = append(matrix[len(matrix)-1], f)
 				}
@@ -77,7 +86,7 @@ func main() {
 		mr, err := os.Open(*matName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-			os.Exit(0)
+			os.Exit(1)
 		}
 		min = fasta.NewReader(mr, linear.NewSeq("", nil, alphabet.DNA))
 		for {
@@ -85,7 +94,7 @@ func main() {
 			if err != nil {
 				if err != io.EOF {
 					fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-					os.Exit(0)
+					os.Exit(1)
 				}
 				break
 			}
@@ -110,7 +119,7 @@ func main() {
 		r = os.Stdin
 	} else if r, err = os.Open(*inName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-		os.Exit(0)
+		os.Exit(1)
 	} else {
 		defer r.Close()
 	}
@@ -118,34 +127,57 @@ func main() {
 
 	if *matName == "" {
 		flag.Usage()
-		os.Exit(0)
+		os.Exit(1)
 	}
 
 	if *outName == "" {
-		out = gff.NewWriter(os.Stdout, 2, 60, true)
-	} else if out, err = gff.NewWriterName(*outName, 2, 60, true); err != nil {
+		out = gff.NewWriter(os.Stdout, 60, true)
+	} else if f, err := os.Create(*outName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
+	} else {
+		defer f.Close()
+		out = gff.NewWriter(f, 60, true)
 	}
+	out.Precision = 2
 	defer out.Close()
-
-	source := "pwmscan"
-	feature := "match"
 
 	for {
 		if s, err := in.Read(); err != nil {
 			break
 		} else {
 			fmt.Fprintf(os.Stderr, "Working on: %s %s\n", s.Name(), s.Description())
+
 			res := wm.Search(s.(*linear.Seq), s.Start(), s.End(), *minScore)
-			if len(res) > 1 {
-				fmt.Fprintf(os.Stderr, "... found %d matches.\n", len(res))
-			} else {
+			if len(res) == 1 {
 				fmt.Fprintf(os.Stderr, "... found %d match.\n", len(res))
+			} else {
+				fmt.Fprintf(os.Stderr, "... found %d matches.\n", len(res))
+			}
+			if len(res) > 0 {
+				out.WriteMetaData(gff.Sequence{s.Name(), s.Alphabet().Moltype()})
 			}
 			for _, r := range res {
-				r.Source = source
-				r.Feature = feature
-				out.Write(r)
+				m := r.(*pwm.Feature)
+				out.Write(&gff.Feature{
+					SeqName:    s.Name(),
+					Source:     "pwmscan",
+					Feature:    "match",
+					FeatStart:  m.MotifStart,
+					FeatEnd:    m.MotifEnd,
+					FeatScore:  &m.MotifScore,
+					FeatStrand: seq.Strand(m.MotifOrient),
+					FeatFrame:  gff.NoFrame,
+					FeatAttributes: gff.Attributes{
+						gff.Attribute{
+							Tag:   "Motif",
+							Value: fmt.Sprintf("%-v", m.MotifSeq),
+						},
+						gff.Attribute{
+							Tag:   "p",
+							Value: fmt.Sprintf("%.*f", *precision, m.MotifProb),
+						},
+					},
+				})
 			}
 		}
 	}

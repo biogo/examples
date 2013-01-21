@@ -1,10 +1,13 @@
 package main
 
 import (
+	"code.google.com/p/biogo/exp/seqio/fasta"
 	"code.google.com/p/biogo/graphics/color"
 	"code.google.com/p/biogo/graphics/kmercolor"
 	"code.google.com/p/biogo/index/kmerindex"
-	"code.google.com/p/biogo/io/seqio/fasta"
+
+	"code.google.com/p/biogo/exp/alphabet"
+	"code.google.com/p/biogo/exp/seq/linear"
 	"flag"
 	"fmt"
 	"image"
@@ -16,7 +19,6 @@ func main() {
 	var (
 		in  *fasta.Reader
 		out *os.File
-		e   error
 	)
 
 	inName := flag.String("in", "", "Filename for input. Defaults to stdin.")
@@ -30,34 +32,37 @@ func main() {
 
 	if *help {
 		flag.Usage()
-		os.Exit(1)
-	}
-
-	if *inName == "" {
-		in = fasta.NewReader(os.Stdin)
-	} else if in, e = fasta.NewReaderName(*inName); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", e)
 		os.Exit(0)
 	}
-	defer in.Close()
+
+	t := linear.NewSeq("", nil, alphabet.DNA)
+	if *inName == "" {
+		in = fasta.NewReader(os.Stdin, t)
+	} else if f, err := os.Open(*inName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
+	} else {
+		defer f.Close()
+		in = fasta.NewReader(f, t)
+	}
 
 	count := 0
 	for {
 		count++
-		if sequence, err := in.Read(); err != nil {
-			os.Exit(0)
+		if s, err := in.Read(); err != nil {
+			os.Exit(1)
 		} else {
-			if index, err := kmerindex.New(*k, sequence); err != nil {
+			if index, err := kmerindex.New(*k, s.(*linear.Seq)); err != nil {
 				fmt.Println(err)
-				os.Exit(0)
+				os.Exit(1)
 			} else {
 				base := color.HSVA{0, 1, 0, 1}
-				rainbow := kmercolor.NewKmerRainbow(image.Rect(0, 0, sequence.Len() / *chunk, *height), index, base)
-				for i := 0; (i+1)**chunk < sequence.Len(); i++ {
+				rainbow := kmercolor.NewKmerRainbow(image.Rect(0, 0, s.Len() / *chunk, *height), index, base)
+				for i := 0; (i+1)**chunk < s.Len(); i++ {
 					rainbow.Paint(kmercolor.V, i, *chunk, i, i+1)
 				}
-				if out, e = os.Create(fmt.Sprintf("%s-%d.png", *outName, count)); e != nil {
-					fmt.Fprintf(os.Stderr, "Error: %v.", e)
+				if out, err = os.Create(fmt.Sprintf("%s-%d.png", *outName, count)); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v.", err)
 				}
 				png.Encode(out, rainbow)
 				out.Close()

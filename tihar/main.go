@@ -1,16 +1,17 @@
 package main
 
 import (
+	"code.google.com/p/biogo.matrix"
+	"code.google.com/p/biogo/exp/seqio/fasta"
 	"code.google.com/p/biogo/index/kmerindex"
-	"code.google.com/p/biogo/io/seqio/fasta"
-	"code.google.com/p/biogo/matrix"
-	"code.google.com/p/biogo/matrix/sparse"
-	"code.google.com/p/biogo/nmf"
+
+	"code.google.com/p/biogo/exp/alphabet"
+	"code.google.com/p/biogo/exp/seq/linear"
 	"flag"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
-	"runtime"
 	"runtime/pprof"
 	"sort"
 	"time"
@@ -20,7 +21,7 @@ func main() {
 	var (
 		in                *fasta.Reader
 		out, csv, profile *os.File
-		e                 error
+		err               error
 	)
 
 	inName := flag.String("in", "", "Filename for input to be factorised. Defaults to stdin.")
@@ -32,9 +33,7 @@ func main() {
 	limit := flag.Int("time", 10, "time limit for NMF.")
 	lo := flag.Int("lo", 1, "minimum number of kmer frequency to use in NMF.")
 	hi := flag.Float64("hi", 0.9, "maximum proportion of kmer representation to use in NMF.")
-	sf := flag.Float64("sf", 0.01, "factor for sparcity of estimating matrices for NMF.")
 	tol := flag.Float64("tol", 0.001, "tolerance for NMF.")
-	threads := flag.Int("threads", 2, "number of threads to use.")
 	seed := flag.Int64("seed", -1, "seed for random number generator (-1 uses system clock).")
 	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to this file.")
 	help := flag.Bool("help", false, "print this usage message.")
@@ -43,38 +42,37 @@ func main() {
 
 	if *help {
 		flag.Usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 
-	runtime.GOMAXPROCS(*threads)
-	sparse.MaxProcs = *threads
-	fmt.Fprintf(os.Stderr, "Using %d threads.\n", runtime.GOMAXPROCS(0))
 	if *cpuprofile != "" {
-		if profile, e = os.Create(*cpuprofile); e != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.", e)
-			os.Exit(0)
+		if profile, err = os.Create(*cpuprofile); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v.", err)
+			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "Writing CPU profile data to %s\n", *cpuprofile)
 		pprof.StartCPUProfile(profile)
 		defer pprof.StopCPUProfile()
 	}
 
+	t := linear.NewSeq("", nil, alphabet.DNA)
 	if *inName == "" {
 		fmt.Fprintln(os.Stderr, "Reading sequences from stdin.")
-		in = fasta.NewReader(os.Stdin)
-	} else if in, e = fasta.NewReaderName(*inName); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", e)
-		os.Exit(0)
+		in = fasta.NewReader(os.Stdin, t)
+	} else if f, err := os.Open(*inName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
 	} else {
+		defer f.Close()
 		fmt.Fprintf(os.Stderr, "Reading sequence from `%s'.\n", *inName)
+		in = fasta.NewReader(f, t)
 	}
-	defer in.Close()
 
 	if *outName == "" {
 		fmt.Fprintln(os.Stderr, "Writing output to stdout.")
 		out = os.Stdout
-	} else if out, e = os.Create(*outName); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", e)
+	} else if out, err = os.Create(*outName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 	} else {
 		fmt.Fprintf(os.Stderr, "Writing output to `%s'.\n", *outName)
 	}
@@ -83,8 +81,8 @@ func main() {
 	if *csvName == "" {
 		fmt.Fprintln(os.Stderr, "Writing csv output to stdout.")
 		csv = os.Stdout
-	} else if csv, e = os.Create(*csvName); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", e)
+	} else if csv, err = os.Create(*csvName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 	} else {
 		fmt.Fprintf(os.Stderr, "Writing output to `%s'.\n", *csvName)
 	}
@@ -96,12 +94,12 @@ func main() {
 	maxPos := 0
 
 	for {
-		if sequence, err := in.Read(); err != nil {
+		if s, err := in.Read(); err != nil {
 			break
 		} else {
-			if kindex, e := kmerindex.New(*k, sequence); e != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v.", e)
-				os.Exit(0)
+			if kindex, err := kmerindex.New(*k, s.(*linear.Seq)); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v.", err)
+				os.Exit(1)
 			} else {
 				kindex.Build()
 				index, _ := kindex.KmerIndex()
@@ -113,7 +111,7 @@ func main() {
 						if _, ok := motifs[kmer][pos]; !ok {
 							motifs[kmer][pos] = make(map[string]bool)
 						}
-						motifs[kmer][pos][string(sequence.ID)] = true
+						motifs[kmer][pos][string(s.Name())] = true
 						kmers[kmer]++
 						positions[pos]++
 						if pos > maxPos {
@@ -151,26 +149,21 @@ func main() {
 		kmerTable = append(kmerTable, kmerindex.Kmer(kmer))
 	}
 
-	var kmerMatrix *sparse.Sparse
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v.\n", r)
-				os.Exit(0)
-			}
-		}()
-		kmerMatrix = sparse.Matrix(kmerArray)
-	}()
+	kMat, err := matrix.NewDense(kmerArray)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
+	}
 
 	f := func(i, j int, v float64) float64 {
-		if kmerMatrix.At(i, j) != 0 {
+		if kMat.At(i, j) != 0 {
 			return 1
 		}
 		return 0
 	}
-	nonZero := kmerMatrix.Apply(f).Sum()
+	nonZero := kMat.Apply(f, kMat).Sum()
 
-	r, c := kmerMatrix.Dims()
+	r, c := kMat.Dims()
 	density := nonZero / float64(r*c)
 
 	if *seed == -1 {
@@ -179,17 +172,29 @@ func main() {
 	fmt.Fprintf(os.Stderr, "Using %v as random seed.\n", *seed)
 	rand.Seed(*seed)
 
-	rows, cols := kmerMatrix.Dims()
-	Wo := sparse.Random(rows, *cat, density**sf)
-	Ho := sparse.Random(*cat, cols, density**sf)
+	rows, cols := kMat.Dims()
 
-	fmt.Fprintf(os.Stderr, "Dimensions of Kmer matrix = (%v, %v)\nDensity = %.3f %%\n%v\n", r, c, (density)*100, kmerMatrix)
+	posNorm := func() float64 { return math.Abs(rand.NormFloat64()) }
 
-	W, H, ok := nmf.Factors(kmerMatrix, Wo, Ho, *tol, *iter, time.Duration(*limit)*1e9)
+	Wo, err := matrix.FuncDense(rows, *cat, 1, posNorm)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
+	}
+
+	Ho, err := matrix.FuncDense(*cat, cols, 1, posNorm)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "Dimensions of Kmer matrix = (%v, %v)\nDensity = %.3f %%\n%v\n", r, c, (density)*100, kMat)
+
+	W, H, ok := matrix.Factors(kMat, Wo, Ho, *tol, *iter, time.Duration(*limit)*1e9)
 
 	fmt.Fprintf(os.Stderr, "norm(H) = %v norm(W) = %v\n\nFinished = %v\n\n", H.Norm(matrix.Fro), W.Norm(matrix.Fro), ok)
 
-	printFeature(out, csv, kmerMatrix, W, H, motifs, kmerTable, positionsTable, maxPos, *k)
+	printFeature(out, csv, kMat, W, H, motifs, kmerTable, positionsTable, maxPos, *k)
 }
 
 type Weight struct {
@@ -211,7 +216,7 @@ func (self WeightList) Less(i, j int) bool {
 	return self[i].weight > self[j].weight
 }
 
-func printFeature(out, csv *os.File, V, W, H *sparse.Sparse, motifs map[kmerindex.Kmer]map[int]map[string]bool, kmerTable []kmerindex.Kmer, positionsTable map[int]int, maxPos, k int) {
+func printFeature(out, csv *os.File, V, W, H matrix.Matrix, motifs map[kmerindex.Kmer]map[int]map[string]bool, kmerTable []kmerindex.Kmer, positionsTable map[int]int, maxPos, k int) {
 	patternCount, posCount := H.Dims()
 	kmerCount, _ := W.Dims()
 
@@ -228,7 +233,11 @@ func printFeature(out, csv *os.File, V, W, H *sparse.Sparse, motifs map[kmerinde
 		name := fmt.Sprint("[")
 		for j := 0; j < len(klist); j++ {
 			if klist[j].weight > 0 {
-				name += fmt.Sprintf(" %s/%.3e ", kmerindex.Stringify(k, kmerTable[klist[j].index]), klist[j].weight)
+				ks, err := kmerindex.Format(kmerTable[klist[j].index], k, alphabet.DNA)
+				if err != nil {
+					panic(err)
+				}
+				name += fmt.Sprintf(" %s/%.3e ", ks, klist[j].weight)
 			}
 		}
 		name += fmt.Sprint("]")
@@ -262,11 +271,11 @@ func printFeature(out, csv *os.File, V, W, H *sparse.Sparse, motifs map[kmerinde
 		if pos, ok := positionsTable[i]; ok {
 			all := ""
 			for _, pat := range hipats[pos] {
-				all += fmt.Sprintf("\t%e", pat.weight)
+				all += fmt.Sprintf("\t%err", pat.weight)
 			}
 			sort.Sort(&hipats[pos])
 			if hipats[pos][0].weight > 0 {
-				fmt.Fprintf(csv, "%d\t%d\t%e%s\n", i, hipats[pos][0].index, hipats[pos][0].weight, all)
+				fmt.Fprintf(csv, "%d\t%d\t%err%s\n", i, hipats[pos][0].index, hipats[pos][0].weight, all)
 			}
 		}
 	}

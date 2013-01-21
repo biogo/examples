@@ -57,7 +57,12 @@ func main() {
 
 	flag.Parse()
 
-	if *help || *regionName == "" || *motifName == "" {
+	if *help {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	if *regionName == "" || *motifName == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -66,7 +71,7 @@ func main() {
 	motifFile, err := os.Open(*motifName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(0)
+		os.Exit(1)
 	}
 	defer motifFile.Close()
 	motif := bed.NewReader(motifFile, 3)
@@ -75,7 +80,7 @@ func main() {
 	regionFile, err := os.Open(*regionName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(0)
+		os.Exit(1)
 	}
 	defer regionFile.Close()
 	region := bed.NewReader(regionFile, 3)

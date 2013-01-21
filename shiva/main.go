@@ -1,8 +1,11 @@
 package main
 
 import (
-	"code.google.com/p/biogo/io/seqio/fasta"
-	"code.google.com/p/biogo/seq"
+	"code.google.com/p/biogo/exp/alphabet"
+	"code.google.com/p/biogo/exp/seq/linear"
+	"code.google.com/p/biogo/exp/seqio/fasta"
+
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -13,7 +16,7 @@ func main() {
 	var (
 		in      *fasta.Reader
 		out     *fasta.Writer
-		e       error
+		err     error
 		profile *os.File
 	)
 
@@ -28,53 +31,59 @@ func main() {
 
 	if *help {
 		flag.Usage()
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	if *cpuprofile != "" {
-		if profile, e = os.Create(*cpuprofile); e != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.", e)
-			os.Exit(0)
+		if profile, err = os.Create(*cpuprofile); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v.", err)
+			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "Writing CPU profile data to %s\n", *cpuprofile)
 		pprof.StartCPUProfile(profile)
 		defer pprof.StopCPUProfile()
 	}
 
+	t := linear.NewSeq("", nil, alphabet.DNA)
+
 	if *inName == "" {
-		in = fasta.NewReader(os.Stdin)
-	} else if in, e = fasta.NewReaderName(*inName); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", e)
+		in = fasta.NewReader(os.Stdin, t)
+	} else if f, err := os.Open(*inName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
+	} else {
+		defer f.Close()
+		in = fasta.NewReader(f, t)
 	}
-	defer in.Close()
 
 	if *outName == "" {
 		out = fasta.NewWriter(os.Stdout, *width)
-	} else if out, e = fasta.NewWriterName(*outName, *width); e != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", e)
+	} else if f, err := os.Create(*outName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		os.Exit(1)
+	} else {
+		defer f.Close()
+		buf := bufio.NewWriter(f)
+		defer buf.Flush()
+		out = fasta.NewWriter(buf, *width)
 	}
-	defer out.Close()
 
-	var (
-		sequence *seq.Seq
-		err      error
-	)
-
-	t := &seq.Seq{}
-
+	var trunc *linear.Seq
 	for {
-		if sequence, err = in.Read(); err != nil {
+		s, err := in.Read()
+		if err != nil {
 			break
 		}
-		length := sequence.Len()
-		t.ID = sequence.ID
+		length := s.Len()
+		li := s.(*linear.Seq)
+		trunc.ID = li.ID
 		switch {
 		case length >= 20 && length <= 85:
-			t.Seq = sequence.Seq[5:]
+			t.Seq = li.Seq[5:]
 			out.Write(t)
 		case length > 85:
 			for start := 0; start+*size <= length; start += *size {
-				t.Seq = sequence.Seq[start : start+*size]
+				t.Seq = li.Seq[start : start+*size]
 				out.Write(t)
 			}
 		}
