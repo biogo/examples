@@ -15,6 +15,7 @@ import (
 	"code.google.com/p/biogo/seq/multi"
 	"code.google.com/p/biogo/seq/sequtils"
 
+	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
@@ -125,11 +126,12 @@ func main() {
 		os.Exit(1)
 	} else {
 		defer f.Close()
-		out = gff.NewWriter(f, 60, true)
+		buf := bufio.NewWriter(f)
+		defer buf.Flush()
+		out = gff.NewWriter(buf, 60, true)
 		out.Precision = 2
 		fmt.Fprintf(os.Stderr, "Writing to `%s'.\n", *outName)
 	}
-	defer out.Close()
 
 	fmt.Fprintf(os.Stderr, "Building data structures.\n")
 	fmt.Fprintf(os.Stderr, " Generating piles ...\n")

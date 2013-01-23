@@ -6,6 +6,7 @@ import (
 	"code.google.com/p/biogo/align/pals/filter"
 	"code.google.com/p/biogo/morass"
 
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -164,9 +165,10 @@ func main() {
 			log.Fatalf("Could not open output file: %v", err)
 		}
 		defer out.Close()
-		writer = pals.NewWriter(out, 2, 60, false)
+		buf := bufio.NewWriter(out)
+		defer buf.Flush()
+		writer = pals.NewWriter(buf, 2, 60, false)
 	}
-	defer writer.Close()
 
 	if !selfCompare {
 		if queryName != "" {

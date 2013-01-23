@@ -136,10 +136,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
 	} else {
 		defer f.Close()
-		out = gff.NewWriter(f, 60, true)
+		buf := bufio.NewWriter(f)
+		defer buf.Flush()
+		out = gff.NewWriter(buf, 60, true)
 	}
 	out.Precision = 2
-	defer out.Close()
 
 	for {
 		if s, err := in.Read(); err != nil {

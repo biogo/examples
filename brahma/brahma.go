@@ -13,6 +13,7 @@ import (
 	"code.google.com/p/biogo/seq"
 	"code.google.com/p/biogo/util"
 
+	"bufio"
 	"bytes"
 	"container/heap"
 	"flag"
@@ -197,12 +198,13 @@ func main() {
 	} else if of, err := os.Create(*outName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 	} else {
-		out = gff.NewWriter(of, 60, true)
 		defer of.Close()
+		buf := bufio.NewWriter(of)
+		defer buf.Flush()
+		out = gff.NewWriter(buf, 60, true)
 		fmt.Fprintf(os.Stderr, "Writing annotation to `%s'.\n", *outName)
 	}
 	out.Precision = 2
-	defer out.Close()
 
 	ts := make(trees)
 
