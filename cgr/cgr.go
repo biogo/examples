@@ -2,9 +2,9 @@
 package main
 
 import (
+	"code.google.com/p/biogo.graphics/color"
+	"code.google.com/p/biogo.graphics/kmercolor"
 	"code.google.com/p/biogo/alphabet"
-	"code.google.com/p/biogo/graphics/color"
-	"code.google.com/p/biogo/graphics/kmercolor"
 	"code.google.com/p/biogo/index/kmerindex"
 	"code.google.com/p/biogo/io/seqio/fasta"
 	"code.google.com/p/biogo/seq/linear"
