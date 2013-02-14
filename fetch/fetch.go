@@ -78,6 +78,7 @@ func main() {
 			)
 			r, err = entrez.Fetch(db, p, tool, *email, h)
 			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed... retrying.\n")
 				continue
 			}
 			_bn, err = io.Copy(buf, r)
@@ -100,5 +101,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+	}
+	if bn != n {
+		fmt.Fprintf(os.Stderr, "Writethrough mismatch: %d != %d\n", bn, n)
 	}
 }
