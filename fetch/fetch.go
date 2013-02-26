@@ -7,7 +7,7 @@
 package main
 
 import (
-	"code.google.com/p/biogo.entrez"
+	"code.google.com/p/biogo.ncbi/entrez"
 
 	"bytes"
 	"flag"
@@ -43,12 +43,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	h := &entrez.History{}
-	s, err := entrez.DoSearch(db, query, nil, h, tool, *email)
+	s, err := entrez.DoSearch(db, query, nil, new(entrez.History), tool, *email)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	h := s.History()
 	fmt.Fprintf(os.Stderr, "Will retrieve %d records.\n", s.Count)
 
 	var of *os.File
