@@ -43,12 +43,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	s, err := entrez.DoSearch(db, query, nil, new(entrez.History), tool, *email)
+	h := entrez.History{}
+	s, err := entrez.DoSearch(db, query, nil, &h, tool, *email)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	h := s.History()
 	fmt.Fprintf(os.Stderr, "Will retrieve %d records.\n", s.Count)
 
 	var of *os.File
@@ -76,7 +76,7 @@ func main() {
 				r   io.ReadCloser
 				_bn int64
 			)
-			r, err = entrez.Fetch(db, p, tool, *email, h)
+			r, err = entrez.Fetch(db, p, tool, *email, &h)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed... retrying.\n")
 				continue
