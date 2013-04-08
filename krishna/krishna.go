@@ -99,7 +99,9 @@ func init() {
 		*mem = uintptr(maxMem)
 	}
 
-	runtime.GOMAXPROCS(threads)
+	if threads > runtime.GOMAXPROCS(0) {
+		runtime.GOMAXPROCS(threads)
+	}
 }
 
 func initLog(fileName string) {
