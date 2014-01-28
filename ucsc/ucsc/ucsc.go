@@ -33,8 +33,8 @@ type Seq struct {
 }
 
 // NewSeq returns a new Seq.
-func NewSeq(id string, b []byte, alpha alphabet.Alphabet) Seq {
-	return Seq{linear.NewSeq("", nil, alphabet.DNA)}
+func NewSeq(id string, b []alphabet.Letter, alpha alphabet.Alphabet) Seq {
+	return Seq{linear.NewSeq(id, b, alpha)}
 }
 
 // Clone returns a copy of the Seq.
