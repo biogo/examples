@@ -113,7 +113,7 @@ func (c *Contig) At(i int) alphabet.QLetter {
 }
 
 // Set sets the letter at postion i to l. If no sequence is present at the specified
-// position, Set is a no-op.
+// position, Set is a no-op on the Contig and returns a non-nil error.
 func (c *Contig) Set(i int, l alphabet.QLetter) error {
 	vs, err := c.vector.At(i)
 	if err != nil {
@@ -167,7 +167,7 @@ func min(a, b int) int {
 	return b
 }
 
-// Format is a fmt.Formatter helper. It provide support for the %v (with go syntax
+// Format is a fmt.Formatter helper. It provides support for the %v (with go syntax
 // representation), %s and %a (FASTA output). Note that %v representation takes no
 // account of overlapping inserted sequences and so will be misleading if overlaps
 // exist.
