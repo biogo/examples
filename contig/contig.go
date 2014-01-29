@@ -37,6 +37,8 @@ func (s seqStep) Equal(e step.Equaler) bool {
 	panic("contig: non-sequence types not handled")
 }
 
+func (s seqStep) String() string { return fmt.Sprint(s.Sequence) }
+
 type ambig alphabet.Letter
 
 func (a ambig) Equal(e step.Equaler) bool   { return a == e.(ambig) }
@@ -214,14 +216,14 @@ func (c *Contig) Format(fs fmt.State, cr rune) {
 	c.vector.DoRange(0, p,
 		func(start, end int, e step.Equaler) {
 			switch e := e.(type) {
-			case seq.Sequence:
+			case seqStep:
 				if e.Start() != start || e.End() != end {
 					se := e.New()
 					sequtils.Truncate(se, e, start, end)
 					fmt.Fprintf(lw, "%-s", se)
 					break
 				}
-				fmt.Fprintf(lw, "%-s", e)
+				fmt.Fprintf(lw, "%-s", e.Sequence)
 			case ambig:
 				eb := []byte{byte(e)}
 				for i := start; i < end; i++ {
