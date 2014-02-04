@@ -7,7 +7,7 @@
 package main
 
 import (
-	"code.google.com/p/biogo.interval"
+	"code.google.com/p/biogo.store/interval"
 	"code.google.com/p/biogo/feat"
 	"code.google.com/p/biogo/io/featio/gff"
 	"code.google.com/p/biogo/seq"

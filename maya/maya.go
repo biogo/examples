@@ -8,7 +8,7 @@
 package main
 
 import (
-	"code.google.com/p/biogo.interval"
+	"code.google.com/p/biogo.store/interval"
 	"code.google.com/p/biogo/io/featio/bed"
 	"flag"
 	"fmt"

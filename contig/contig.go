@@ -7,7 +7,7 @@
 package contig
 
 import (
-	"code.google.com/p/biogo.step"
+	"code.google.com/p/biogo.store/step"
 	"code.google.com/p/biogo/alphabet"
 	"code.google.com/p/biogo/seq"
 	"code.google.com/p/biogo/seq/sequtils"
