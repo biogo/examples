@@ -74,7 +74,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer motifFile.Close()
-	motif := bed.NewReader(motifFile, 3)
+	motif, _ := bed.NewReader(motifFile, 3)
 	fmt.Fprintf(os.Stderr, "Reading motif features from `%s'.\n", *motifName)
 
 	regionFile, err := os.Open(*regionName)
@@ -83,7 +83,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer regionFile.Close()
-	region := bed.NewReader(regionFile, 3)
+	region, _ := bed.NewReader(regionFile, 3)
 	fmt.Fprintf(os.Stderr, "Reading region features from `%s'.\n", *regionName)
 
 	// Read in motif features and build interval tree to search
@@ -148,7 +148,7 @@ func main() {
 						fmt.Fprintf(os.Stderr, "\t%s\n", m)
 					}
 
-					// The Method of Provisional Means	
+					// The Method of Provisional Means
 					n++
 					mean = oldmean + (mid-oldmean)/n
 					sumOfSquares += (mid - oldmean) * (mid - mean)
