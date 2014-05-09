@@ -32,7 +32,7 @@ const (
 	maxAnnotations   = 8
 	annotationLength = 256
 	mapLen           = 20
-	maxMargin        = 1 / mapLen
+	maxMargin        = 1. / mapLen
 )
 
 var (
