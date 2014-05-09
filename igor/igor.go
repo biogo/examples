@@ -1,397 +1,265 @@
+// Copyright ©2014 The bíogo Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 // igor is a tool that takes pairwise alignment data as produced by PALS or krishna
-// and generates repeat feature consensus sequences.
+// and reports repeat feature family groupings in JSON format.
 package main
 
 import (
-	"code.google.com/p/biogo.external/mafft"
-	"code.google.com/p/biogo.external/muscle"
+	"code.google.com/p/biogo.examples/igor/igor"
+
 	"code.google.com/p/biogo.graph"
 	"code.google.com/p/biogo/align/pals"
-	"code.google.com/p/biogo/alphabet"
 	"code.google.com/p/biogo/io/featio/gff"
-	"code.google.com/p/biogo/io/seqio/fasta"
 	"code.google.com/p/biogo/seq"
-	"code.google.com/p/biogo/seq/linear"
-	"code.google.com/p/biogo/seq/multi"
-	"code.google.com/p/biogo/seq/sequtils"
 
 	"bufio"
-	"bytes"
+	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
 	"log"
-	"net/http"
-	_ "net/http/pprof"
 	"os"
-	"os/exec"
-	"runtime"
-	"runtime/pprof"
-	"strings"
-	"sync"
 )
 
-var bug debug
-
-type debug bool
-
-func (d debug) Printf(format string, v ...interface{}) (int, error) {
-	if d {
-		return fmt.Printf(format, v...)
+func min(a, b int) int {
+	if a < b {
+		return a
 	}
-	return 0, nil
+	return b
 }
 
-var aligner int
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
 
-const (
-	Muscle = iota + 1
-	Mafft
+func within(alpha float64, short, long int) bool {
+	return float64(short) >= float64(long)*(1-alpha)
+}
+
+var (
+	inName  string
+	outName string
+
+	landscapeDir string
+
+	classic bool
+
+	pileDiff  float64
+	imageDiff float64
+
+	band          float64
+	mergeOverlap  int
+	removeOverlap float64
+	requiredCover float64
+	keepOverlaps  bool
+
+	threads int
+	bug     bool
 )
 
-type strandEdge struct {
-	graph.Edge
-	Strand seq.Strand
-}
+func init() {
+	flag.StringVar(&inName, "in", "", "Filename for input.")
+	flag.StringVar(&outName, "out", "", "Filename for output. Defaults to stdout.")
+	flag.StringVar(&landscapeDir, "landscapes", "", "Directory to output landscape data (deletes existing directory).")
 
-func main() {
-	var (
-		in  *gff.Reader
-		out *gff.Writer
-		err error
-	)
+	flag.Float64Var(&band, "band", 0.05, "Kernel bandwidth as fraction of pile length.")
+	flag.Float64Var(&pileDiff, "pile-diff", 0.05, "Fractional length difference tolerance between piles.")
+	flag.Float64Var(&imageDiff, "image-diff", 0.05, "Fractional length difference tolerance for images and piles.")
+	flag.IntVar(&mergeOverlap, "merge-overlap", 0, "Threshold for merging adjacent images into piles.")
+	flag.Float64Var(&removeOverlap, "remove-overlap", 0.95, "Fractional pile overlap threshold for removal in clustering.")
+	flag.Float64Var(&requiredCover, "target-coverage", 0.95, "Fractional pile coverage threshold.")
+	flag.BoolVar(&keepOverlaps, "allow-overlaps", true, "Keep overlapping sub piles.")
 
-	var (
-		inName  = flag.String("in", "", "Filename for input.")
-		outName = flag.String("out", "", "Filename for output. Defaults to stdout.")
-		refName = flag.String("ref", "", "Filename of fasta file containing reference sequence.")
+	flag.IntVar(&threads, "threads", 4, "Number of parallel clustering threads to use.")
+	flag.BoolVar(&bug, "debug", false, "Print graph generation information.")
 
-		epsilon = flag.Float64("epsilon", 0.15, "Tolerance for clustering.")
-		effort  = flag.Int("effort", 5, "Number of attempts for clustering.")
+	flag.BoolVar(&classic, "classic", false, "Run a reasonable approximation of the C implementation of PILER.")
 
-		minFamily = flag.Int("famsize", 2, "Minimum number of clusters per family (must be >= 2).")
-
-		cpuprofile = flag.String("cpuprofile", "", "Write cpu profile to this file.")
-		webprofile = flag.String("webprofile", "", "Run web-based profiling on this host:port.")
-
-		help = flag.Bool("help", false, "Print usage message.")
-	)
-	flag.IntVar(&aligner, "aligner", 1, "Which aligner to use: 1 - muscle, 2 - mafft")
-	flag.BoolVar((*bool)(&bug), "debug", false, "Print graph generation information.")
+	help := flag.Bool("help", false, "Print usage message.")
 
 	flag.Parse()
-	if *minFamily < 2 {
-		*minFamily = 2
-	}
-
 	if *help {
 		flag.Usage()
 		os.Exit(0)
 	}
 
-	if *webprofile != "" {
-		go func() {
-			log.Println(http.ListenAndServe(*webprofile, nil))
-		}()
-	}
-	if *cpuprofile != "" {
-		profile, err := os.Create(*cpuprofile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.", err)
-			os.Exit(1)
+	if landscapeDir != "" {
+		fi, err := os.Stat(landscapeDir)
+		if err != nil && !os.IsNotExist(err) {
+			log.Fatalf("failed to stat landscape directory: %v", err)
 		}
-		fmt.Fprintf(os.Stderr, "Writing CPU profile data to %s\n", *cpuprofile)
-		pprof.StartCPUProfile(profile)
-		defer pprof.StopCPUProfile()
+		if fi != nil && !fi.IsDir() {
+			log.Fatalf("will not delete non-directory file %q", landscapeDir)
+		}
+		err = os.RemoveAll(landscapeDir)
+		if err != nil {
+			log.Fatalf("failed to delete landscape directory %q: %v", landscapeDir, err)
+		}
+		err = os.Mkdir(landscapeDir, 0755)
+		if err != nil {
+			log.Fatalf("failed to create landscape directory %q: %v", landscapeDir, err)
+		}
 	}
+}
 
-	if *inName == "" {
-		fmt.Fprintln(os.Stderr, "Reading PALS features from stdin.")
+func main() {
+	var (
+		in  *gff.Reader
+		out io.Writer
+	)
+
+	if inName == "" {
+		log.Println("reading PALS features from stdin")
 		in = gff.NewReader(os.Stdin)
-	} else if f, err := os.Open(*inName); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(1)
+	} else if f, err := os.Open(inName); err != nil {
+		log.Fatalf("error: %v", err)
 	} else {
 		defer f.Close()
 		in = gff.NewReader(f)
-		fmt.Fprintf(os.Stderr, "Reading PALS features from `%s'.\n", *inName)
+		log.Printf("reading PALS features from %q\n", inName)
 	}
 
-	if *outName == "" {
-		fmt.Fprintln(os.Stderr, "Writing to stdout.")
-		out = gff.NewWriter(os.Stdout, 60, false)
-		out.Precision = 2
-	} else if f, err := os.Create(*outName); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(1)
+	if outName == "" {
+		log.Println("writing to stdout")
+		out = os.Stdout
+	} else if f, err := os.Create(outName); err != nil {
+		log.Fatalf("error: %v", err)
 	} else {
 		defer f.Close()
 		buf := bufio.NewWriter(f)
 		defer buf.Flush()
-		out = gff.NewWriter(buf, 60, true)
-		out.Precision = 2
-		fmt.Fprintf(os.Stderr, "Writing to `%s'.\n", *outName)
+		out = buf
+		log.Printf("writing to %q\n", outName)
 	}
 
-	fmt.Fprintf(os.Stderr, "Building data structures.\n")
-	fmt.Fprintf(os.Stderr, " Generating piles ...\n")
-	piler := pals.NewPiler(0)
-	for {
-		rep, err := in.Read()
-		if err != nil {
-			if err != io.EOF {
-				fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-				os.Exit(1)
-			}
-			break
-		}
+	log.Println("generating piles ... adding pairs.")
 
-		p, err := pals.ExpandFeature(rep.(*gff.Feature))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-			os.Exit(1)
-		}
-		piler.Add(p)
+	log.Println("generating piles ... piling.")
+	var pf pals.PairFilter
+	if classic {
+		pf = func(p *pals.Pair) bool {
+			// Test whether each image's length is within pileDiff of its pile's length.
+			imageOK := within(imageDiff, p.A.Len(), p.A.Loc.Len()) && within(imageDiff, p.B.Len(), p.B.Loc.Len())
 
+			// Test whether the shorter pile's is within pileDiff of the longer pile's length.
+			pilesOK := within(pileDiff, min(p.A.Loc.Len(), p.B.Loc.Len()), max(p.A.Loc.Len(), p.B.Loc.Len()))
+
+			return imageOK && pilesOK
+		}
 	}
-	piles, err := piler.Piles(nil)
+	piles, err := igor.Piles(in, mergeOverlap, pf)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-		os.Exit(1)
+		log.Fatalf("piling error:", err)
 	}
 
-	fmt.Fprintf(os.Stderr, " Subclustering piles ...")
-	cls := make([]*Cluster, len(piles))
-	wg := &sync.WaitGroup{}
-	q := make(chan struct{}, runtime.GOMAXPROCS(0))
-	for i, p := range piles {
-		wg.Add(1)
-		q <- struct{}{}
-		go func(i int, p *pals.Pile) {
-			defer func() { <-q; wg.Done() }()
-			cls[i] = BuildCluster(p, *epsilon, *effort)
-		}(i, p)
-	}
-	wg.Wait()
-	var p int
-	for _, cl := range cls {
-		p += len(cl.Piles)
-	}
-	fmt.Fprintf(os.Stderr, " generated %d subpiles from %d piles.\n", p, len(cls))
-
-	fmt.Fprintf(os.Stderr, " Connected components ...\n")
-	g := graph.NewUndirected()
-
-	type feature struct {
-		name     string
-		from, to int
-	}
-	added := map[feature]graph.Node{}
-
-	for _, cl := range cls {
-		bug.Printf("\n%v %v\n", cl.Name(), cl.Description())
-		for _, pi := range cl.Piles {
-			if pi.Node == nil {
-				n, ok := added[feature{pi.Name(), pi.Start(), pi.End()}]
-				if !ok {
-					n = g.NewNode()
-					pi.Node = n
-					g.Add(pi)
-					added[feature{pi.Name(), pi.Start(), pi.End()}] = n
-				} else {
-					pi.Node = n
-				}
-			}
-			bug.Printf("\t%v %v %v\n",
-				pi.Name(), pi.Description(), pi.Node)
-			for _, im := range pi.Images {
-				impp := im.B.Location().(*pals.Pile)
-				if impp.Node == nil {
-					n, ok := added[feature{impp.Name(), impp.Start(), impp.End()}]
-					if !ok {
-						n = g.NewNode()
-						impp.Node = n
-						g.Add(impp)
-						added[feature{pi.Name(), pi.Start(), pi.End()}] = n
-					} else {
-						impp.Node = n
-					}
-				}
-				if pi.Node != impp.Node {
-					// TODO Only make non-redundant connections:
-					//  near self alignments should not be connected.
-					e := strandEdge{Edge: graph.NewEdge(), Strand: im.Strand}
-					e.SetWeight(float64(im.Score))
-					err := g.ConnectWith(pi, impp, e)
-					if err != nil {
-						panic(fmt.Sprintf("internal error: %v", err))
-					}
-				}
-				bug.Printf("\t\t%v %v %v %v\n",
-					impp.Name(), impp.Description(), im.Score, impp.Node)
-			}
-		}
-	}
-
-	cc := g.ConnectedComponents(graph.EdgeFilter(func(e graph.Edge) bool {
-		h, t := e.Head().(*pals.Pile), e.Tail().(*pals.Pile)
-		switch {
-		case h.Strand == 0 && t.Strand == 0:
-			h.Strand = 1
-			t.Strand = e.(strandEdge).Strand
-		case t.Strand == 0:
-			t.Strand = h.Strand * e.(strandEdge).Strand
-		case h.Strand == 0:
-			h.Strand = t.Strand * e.(strandEdge).Strand
-		default:
-			if s := e.(strandEdge).Strand; h.Strand != t.Strand*s {
-				if bug {
-					fmt.Printf("igor: inconsistency in strands: %d != %d under T(%d)\n", h.Strand, t.Strand, s)
-				} else {
-					panic(fmt.Sprintf("igor: inconsistency in strands: %d != %d under T(%d)\n", h.Strand, t.Strand, s))
-				}
-			}
-		}
-		return true
-	}))
-
-	if *refName == "" {
-		featureList(cc, *minFamily)
+	var clusters [][]*pals.Pile
+	if classic {
+		clusters = [][]*pals.Pile{piles}
+		log.Printf("generated %d piles.\n", len(piles))
 	} else {
-		sequences(cc, *minFamily, *refName)
+		log.Printf("subclustering piles (%d to do) ...\n", len(piles))
+		var n int
+		n, clusters = igor.Cluster(piles, igor.ClusterConfig{
+			BandWidth:     band,
+			RequiredCover: requiredCover,
+			KeepOverlaps:  keepOverlaps,
+			OverlapThresh: removeOverlap,
+			LandscapeDir:  landscapeDir,
+			Threads:       threads,
+		})
+		log.Printf("generated %d subpiles.\n", n)
+	}
+
+	log.Println("finding connected components ...")
+	cc := igor.Group(clusters, igor.GroupConfig{
+		pileDiff,
+		imageDiff,
+		classic,
+		bug,
+	})
+	log.Printf("%d remaining connected components\n", len(cc))
+
+	err = writeJSON(cc, out)
+	if err != nil {
+		log.Fatalf("error: %v", err)
 	}
 }
 
-func featureList(cc []graph.Nodes, minFamily int) {
-	for fi, fam := range cc {
-		if len(fam) < minFamily {
+func writeJSON(cc []graph.Nodes, w io.Writer) error {
+	type feat struct {
+		C string
+		S int
+		E int
+		O seq.Strand
+	}
+	var (
+		a feat
+		f []feat
+		j = json.NewEncoder(w)
+	)
+
+	seen := make(map[feat]struct{})
+	var fi int
+	for _, fam := range cc {
+		for _, p := range fam {
+			pile := p.(*pals.Pile)
+
+			a.C = pile.Location().Name()
+			a.S = pile.Start()
+			a.E = pile.End()
+			a.O = pile.Strand
+			if _, ok := seen[a]; !ok && pile.Loc != nil {
+				seen[a] = struct{}{}
+				f = append(f, a)
+			}
+
+			for _, im := range pile.Images {
+				partner := im.Mate().Location().(*pals.Pile)
+				if partner.Loc == nil || partner.Strand == seq.None && len(f) > 0 {
+					continue
+				}
+
+				a.C = partner.Location().Name()
+				a.S = partner.Start()
+				a.E = partner.End()
+				a.O = partner.Strand
+				if _, ok := seen[a]; ok {
+					continue
+				}
+
+				seen[a] = struct{}{}
+				f = append(f, a)
+			}
+		}
+		switch len(f) {
+		case 0:
+			continue
+		case 1:
+			f[0].O = seq.Plus
+		default:
+			for i := 0; i < len(f); {
+				if f[i].O == seq.None {
+					f[i], f = f[len(f)-1], f[:len(f)-1]
+				} else {
+					i++
+				}
+			}
+		}
+		if len(f) < 2 {
 			continue
 		}
-		fmt.Printf("Family %d (%d members):\n", fi, len(fam))
-		for _, sfam := range fam {
-			var (
-				sfp    = sfam.(*pals.Pile)
-				cl     = sfp.Location()
-				contig = cl.Location()
-			)
-			fmt.Printf(" %v %s %d %d %d\n", contig.Name(), sfp.Description(), sfp.Start(), sfp.End(), sfp.Strand)
-			for _, pi := range sfp.Images {
-				var (
-					pl     = pi.B.Location()
-					cl     = pl.Location()
-					contig = cl.Location()
-				)
-				fmt.Printf(" - %s %s %d %d %v\n", contig.Name(), pi.B.Description(), pi.B.Start(), pi.B.End(), pi.Strand)
-			}
-		}
-		fmt.Println()
-	}
-}
-
-func sequences(cc []graph.Nodes, minFamily int, refName string) {
-	refStore := map[string]*linear.Seq{}
-	f, err := os.Open(refName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(1)
-	}
-	r := fasta.NewReader(f, &linear.Seq{Annotation: seq.Annotation{Alpha: alphabet.DNA}})
-	for {
-		s, err := r.Read()
+		log.Printf("Family#%d (%d members)\n", fi, len(f))
+		err := j.Encode(f)
 		if err != nil {
-			break
+			return err
 		}
-		refStore[s.Name()] = s.(*linear.Seq)
+		f = f[:0]
+		fi++
 	}
 
-	var rc = make(chan struct {
-		fam  string
-		cons *linear.QSeq
-	})
-	go func() {
-		var (
-			wg = &sync.WaitGroup{}
-			q  = make(chan struct{}, runtime.GOMAXPROCS(0))
-		)
-		for fi, fam := range cc {
-			if len(fam) < minFamily {
-				continue
-			}
-			wg.Add(1)
-			q <- struct{}{}
-			go func(fi int, fam graph.Nodes) {
-				defer func() { <-q; wg.Done() }()
-				var s string
-				for _, sfam := range fam {
-					var (
-						sfp    = sfam.(*pals.Pile)
-						cl     = sfp.Location()
-						contig = cl.Location()
-					)
-					ss := *refStore[contig.Name()]
-					sequtils.Truncate(&ss, refStore[contig.Name()], sfp.Start(), sfp.End())
-					if sfp.Strand < 0 {
-						ss.RevComp()
-					}
-					ss.ID = contig.Name()
-					ss.Desc = fmt.Sprintf("%s in %s (%d %d %v)",
-						sfp.Description(), cl.Name(), sfp.Start(), sfp.End(), sfp.Strand)
-					s = fmt.Sprintf("%s%60a\n", s, &ss)
-				}
-				var m *exec.Cmd
-				switch aligner {
-				case Muscle:
-					m, err = muscle.Muscle{Quiet: true}.BuildCommand()
-				case Mafft:
-					m, err = mafft.Mafft{InFile: "-", Auto: true, Quiet: true}.BuildCommand()
-				default:
-					panic("igor: no valid aligner specified")
-				}
-				if err != nil {
-					panic(err)
-				}
-				m.Stdin = strings.NewReader(s)
-				m.Stdout = &bytes.Buffer{}
-				m.Run()
-				c := genConsensus(m.Stdout.(io.Reader), fmt.Sprintf("Family_%d", fi))
-				c.Desc = fmt.Sprintf("(%d members)", len(fam))
-				rc <- struct {
-					fam  string
-					cons *linear.QSeq
-				}{
-					fam:  fmt.Sprintf("Family_%d (%d members):\n%s", fi, len(fam), m.Stdout),
-					cons: c,
-				}
-			}(fi, fam)
-		}
-		wg.Wait()
-		close(rc)
-	}()
-	for r := range rc {
-		// fmt.Print(r.fam)
-		r.cons.Threshold = seq.DefaultQphred
-		r.cons.QFilter = seq.CaseFilter
-		fmt.Printf("%60a\n", r.cons)
-	}
-}
-
-func genConsensus(in io.Reader, id string) *linear.QSeq {
-	var (
-		r = fasta.NewReader(in, &linear.Seq{
-			Annotation: seq.Annotation{Alpha: alphabet.DNA},
-		})
-
-		ms = &multi.Multi{
-			Annotation:     seq.Annotation{ID: id},
-			ColumnConsense: seq.DefaultQConsensus,
-		}
-	)
-	for {
-		s, err := r.Read()
-		if err != nil {
-			break
-		}
-		ms.Add(s)
-	}
-	return ms.Consensus(true)
+	return nil
 }
