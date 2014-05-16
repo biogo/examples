@@ -136,8 +136,6 @@ func main() {
 		log.Printf("writing to %q\n", outName)
 	}
 
-	log.Println("generating piles ... adding pairs.")
-
 	log.Println("generating piles ... piling.")
 	var pf pals.PairFilter
 	if classic {
