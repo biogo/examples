@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type feat struct {
@@ -48,11 +49,13 @@ var (
 	maxFam     int
 	minFamily  int
 	lengthFrac float64
+	threads    int
 )
 
 func main() {
 	flag.IntVar(&maxFam, "maxFam", 0, "maxFam indicates maximum family size considered (0 == no limit).")
 	flag.IntVar(&minFamily, "famsize", 2, "Minimum number of clusters per family (must be >= 2).")
+	flag.IntVar(&threads, "threads", 1, "Number of concurrent aligner instances to run.")
 	flag.StringVar(&refName, "ref", "", "Filename of fasta file containing reference sequence.")
 	flag.StringVar(&aligner, "aligner", "", "Aligner to use to generate consensus (muscle or mafft).")
 	flag.Float64Var(&lengthFrac, "minLen", 0, "Minimum proportion of longest family member.")
@@ -70,6 +73,11 @@ func main() {
 	if minFamily < 2 {
 		minFamily = 2
 	}
+
+	if threads < 1 {
+		threads = 1
+	}
+	manager.limit = make(chan struct{}, threads)
 
 	if dir != "" {
 		err := os.RemoveAll(dir)
@@ -179,31 +187,57 @@ func main() {
 			} else {
 				file := out.Name()
 				out.Close()
-				if aligner != "" {
-					c, err := consensus(file, aligner)
-					if err != nil {
-						log.Printf("failed to generate consensus for family%06d: %v", fam, err)
-					} else {
-						c.ID = fmt.Sprintf("family%06d_consensus", fam)
-						c.Desc = fmt.Sprintf("(%d members - %d members within %.2f of maximum length)",
-							len(v), validLengthed, lengthFrac,
-						)
-						c.Threshold = 42
-						c.QFilter = seq.CaseFilter
-						file := fmt.Sprintf("family%06d_consensus.fq", fam)
-						out, err = os.Create(filepath.Join(dir, file))
+				fam, lv, validLengthed, lengthFrac := fam, len(v), validLengthed, lengthFrac
+				acquire()
+				go func() {
+					defer release()
+					if aligner != "" {
+						c, err := consensus(file, aligner)
 						if err != nil {
-							log.Printf("failed to create %s: %v", file, err)
+							log.Printf("failed to generate consensus for family%06d: %v", fam, err)
+						} else {
+							c.ID = fmt.Sprintf("family%06d_consensus", fam)
+							c.Desc = fmt.Sprintf("(%d members - %d members within %.2f of maximum length)",
+								lv, validLengthed, lengthFrac,
+							)
+							c.Threshold = 42
+							c.QFilter = seq.CaseFilter
+							file := fmt.Sprintf("family%06d_consensus.fq", fam)
+							out, err := os.Create(filepath.Join(dir, file))
+							if err != nil {
+								log.Printf("failed to create %s: %v", file, err)
+							} else {
+								fmt.Fprintf(out, "%60q\n", c)
+								out.Close()
+							}
 						}
-						fmt.Fprintf(out, "%60q\n", c)
-						out.Close()
 					}
-				}
+				}()
 			}
 			fam++
 		}
 		f.Close()
 	}
+	wait()
+}
+
+var manager struct {
+	limit chan struct{}
+	wg    sync.WaitGroup
+}
+
+func acquire() {
+	manager.wg.Add(1)
+	manager.limit <- struct{}{}
+}
+
+func release() {
+	<-manager.limit
+	manager.wg.Done()
+}
+
+func wait() {
+	manager.wg.Wait()
 }
 
 func consensus(in, aligner string) (*linear.QSeq, error) {
