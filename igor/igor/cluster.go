@@ -70,12 +70,14 @@ type ClusterConfig struct {
 	// KeepOverlaps and OverlapThresh.
 	RequiredCover float64
 
-	// KeepOverlaps allows overlapping piles to be retained
-	// during clustering. If false, contained features overlapping
-	// by more than OverlapThresh fraction of the smaller pile are
-	// are discarded.
-	KeepOverlaps  bool
-	OverlapThresh float64
+	// OverlapStrictness specifies the clustering behaviour.
+	// If OverlapStrictness is zero, all clusters are passed
+	// returned. If set to one, clusters containing clusters
+	// with greater depth are rejected. If set to two, contained
+	// features overlapping by more than OverlapThresh fraction
+	// of the smaller pile are are discarded.
+	OverlapStrictness byte
+	OverlapThresh     float64
 
 	// LandscapeDir specifies the path to store persistence
 	// landscape data. No data is stored if empty.
@@ -170,11 +172,12 @@ func Cluster(piles []*pals.Pile, cfg ClusterConfig) (int, [][]*pals.Pile) {
 				accepted int
 			)
 			for j, c := range tc {
-				if !cfg.KeepOverlaps {
+				if cfg.OverlapStrictness > 0 {
 					pi := pileInterval{c, uintptr(j)}
 					for _, iv := range t.Get(pi) {
 						r := iv.Range()
-						if within(cfg.OverlapThresh, overlap(r, pi.Range()), min(pi.p.Len(), r.End-r.Start)) {
+						pir := pi.Range()
+						discard := func() {
 							c = nil
 							pile := iv.(pileInterval).p
 							skipLock.Lock()
@@ -183,6 +186,18 @@ func Cluster(piles []*pals.Pile, cfg ClusterConfig) (int, [][]*pals.Pile) {
 								im.Location().(*pals.Pile).Loc = nil
 							}
 							skipLock.Unlock()
+						}
+						switch cfg.OverlapStrictness {
+						case 1:
+							if (pir.Start <= r.Start && pir.End > r.End) || (pir.Start < r.Start && pir.End >= r.End) {
+								discard()
+							}
+						case 2:
+							if within(cfg.OverlapThresh, overlap(r, pir), min(pi.p.Len(), r.End-r.Start)) {
+								discard()
+							}
+						default:
+							panic("illegal strictness value")
 						}
 					}
 					if c == nil {

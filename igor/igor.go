@@ -55,7 +55,7 @@ var (
 	mergeOverlap  int
 	removeOverlap float64
 	requiredCover float64
-	keepOverlaps  bool
+	strictness    int
 
 	threads int
 	bug     bool
@@ -72,7 +72,7 @@ func init() {
 	flag.IntVar(&mergeOverlap, "merge-overlap", 0, "Threshold for merging adjacent images into piles.")
 	flag.Float64Var(&removeOverlap, "remove-overlap", 0.95, "Fractional pile overlap threshold for removal in clustering.")
 	flag.Float64Var(&requiredCover, "target-coverage", 0.95, "Fractional pile coverage threshold.")
-	flag.BoolVar(&keepOverlaps, "allow-overlaps", true, "Keep overlapping sub piles.")
+	flag.IntVar(&strictness, "overlap-strictness", 0, "Keep overlapping sub piles (0-2).")
 
 	flag.IntVar(&threads, "threads", 4, "Number of parallel clustering threads to use.")
 	flag.BoolVar(&bug, "debug", false, "Print graph generation information.")
@@ -85,6 +85,11 @@ func init() {
 	if *help {
 		flag.Usage()
 		os.Exit(0)
+	}
+
+	if strictness < 0 || strictness > 2 {
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	if landscapeDir != "" {
@@ -162,12 +167,12 @@ func main() {
 		log.Printf("subclustering piles (%d to do) ...\n", len(piles))
 		var n int
 		n, clusters = igor.Cluster(piles, igor.ClusterConfig{
-			BandWidth:     band,
-			RequiredCover: requiredCover,
-			KeepOverlaps:  keepOverlaps,
-			OverlapThresh: removeOverlap,
-			LandscapeDir:  landscapeDir,
-			Threads:       threads,
+			BandWidth:         band,
+			RequiredCover:     requiredCover,
+			OverlapStrictness: byte(strictness),
+			OverlapThresh:     removeOverlap,
+			LandscapeDir:      landscapeDir,
+			Threads:           threads,
 		})
 		log.Printf("generated %d subpiles.\n", n)
 	}
