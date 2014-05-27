@@ -62,9 +62,10 @@ func main() {
 	flag.StringVar(&dir, "dir", "", "Target directory for output. If not empty dir is deleted first.")
 	flag.Parse()
 
-	if len(flag.Args()) < 1 {
-		fmt.Fprintln(os.Stderr, "Need input file.")
+	if len(flag.Args()) != 1 {
+		fmt.Fprintln(os.Stderr, "Need single input file.")
 		flag.Usage()
+		os.Exit(1)
 	}
 	if refName == "" {
 		fmt.Fprintln(os.Stderr, "Need reference.")
@@ -90,6 +91,112 @@ func main() {
 		}
 	}
 
+	refStore := getReference(refName)
+
+	f, err := os.Open(flag.Args()[0])
+	if err != nil {
+		log.Printf("error: could not open %s to read %v", flag.Args()[0], err)
+	}
+	defer f.Close()
+	b := bufio.NewReader(f)
+
+	for fam := 0; ; fam++ {
+		l, err := b.ReadBytes('\n')
+		if err != nil {
+			break
+		}
+		v := []*feat{}
+		err = json.Unmarshal(l, &v)
+		if err != nil {
+			log.Fatalf("error: %v", err)
+		}
+		if len(v) < minFamily {
+			continue
+		}
+
+		var maxLen int
+		for _, f := range v {
+			if l := f.End - f.Start; l > maxLen {
+				maxLen = l
+			}
+		}
+		lenThresh := int(float64(maxLen) * lengthFrac)
+
+		var validLengthed int
+		for _, f := range v {
+			if f.End-f.Start >= lenThresh {
+				validLengthed++
+			}
+		}
+		if maxFam != 0 && validLengthed > maxFam {
+			continue
+		}
+
+		var out *os.File
+		if dir != "" {
+			file := fmt.Sprintf("family%06d.mfa", fam)
+			out, err = os.Create(filepath.Join(dir, file))
+			if err != nil {
+				log.Fatalf("failed to create %s: %v", file, err)
+			}
+		}
+
+		for id, f := range v {
+			if f.End-f.Start < lenThresh {
+				continue
+			}
+			ss := *refStore[f.Chr]
+			sequtils.Truncate(&ss, refStore[f.Chr], f.Start, f.End)
+			if f.Orient == seq.Minus {
+				ss.RevComp()
+			}
+			ss.ID = fmt.Sprintf("family%06d_member%04d", fam, id)
+			ss.Desc = fmt.Sprintf("%s:%d-%d %v (%d members - %d members within %.2f of maximum length)",
+				f.Chr, f.Start, f.End, f.Orient, len(v), validLengthed, lengthFrac,
+			)
+			if dir == "" {
+				fmt.Printf("%60a\n", &ss)
+			} else {
+				fmt.Fprintf(out, "%60a\n", &ss)
+			}
+		}
+		if dir == "" {
+			fmt.Println()
+		} else {
+			file := out.Name()
+			out.Close()
+			fam, lv, validLengthed, lengthFrac := fam, len(v), validLengthed, lengthFrac
+			acquire()
+			go func() {
+				defer release()
+				if aligner != "" {
+					c, err := consensus(file, aligner)
+					if err != nil {
+						log.Printf("failed to generate consensus for family%06d: %v", fam, err)
+					} else {
+						c.ID = fmt.Sprintf("family%06d_consensus", fam)
+						c.Desc = fmt.Sprintf("(%d members - %d members within %.2f of maximum length)",
+							lv, validLengthed, lengthFrac,
+						)
+						c.Threshold = 42
+						c.QFilter = seq.CaseFilter
+						file := fmt.Sprintf("family%06d_consensus.fq", fam)
+						out, err := os.Create(filepath.Join(dir, file))
+						if err != nil {
+							log.Printf("failed to create %s: %v", file, err)
+						} else {
+							fmt.Fprintf(out, "%60q\n", c)
+							out.Close()
+						}
+					}
+				}
+			}()
+		}
+	}
+	wait()
+}
+
+func getReference(refName string) map[string]*linear.Seq {
 	var f io.Reader
 	f, err := os.Open(refName)
 	if err != nil {
@@ -114,111 +221,7 @@ func main() {
 		log.Fatalf("failed to read reference: %v", err)
 	}
 
-	var fam int
-	for _, n := range flag.Args() {
-		f, err := os.Open(n)
-		if err != nil {
-			log.Printf("error: could not open %s to read %v", n, err)
-		}
-		b := bufio.NewReader(f)
-
-		for j := 0; ; j++ {
-			l, err := b.ReadBytes('\n')
-			if err != nil {
-				break
-			}
-			v := []*feat{}
-			err = json.Unmarshal(l, &v)
-			if err != nil {
-				log.Fatalf("error: %v", err)
-			}
-			if len(v) < minFamily {
-				continue
-			}
-
-			var maxLen int
-			for _, f := range v {
-				if l := f.End - f.Start; l > maxLen {
-					maxLen = l
-				}
-			}
-			lenThresh := int(float64(maxLen) * lengthFrac)
-
-			var validLengthed int
-			for _, f := range v {
-				if f.End-f.Start >= lenThresh {
-					validLengthed++
-				}
-			}
-			if maxFam != 0 && validLengthed > maxFam {
-				continue
-			}
-
-			var out *os.File
-			if dir != "" {
-				file := fmt.Sprintf("family%06d.mfa", fam)
-				out, err = os.Create(filepath.Join(dir, file))
-				if err != nil {
-					log.Fatalf("failed to create %s: %v", file, err)
-				}
-			}
-
-			for id, f := range v {
-				if f.End-f.Start < lenThresh {
-					continue
-				}
-				ss := *refStore[f.Chr]
-				sequtils.Truncate(&ss, refStore[f.Chr], f.Start, f.End)
-				if f.Orient == seq.Minus {
-					ss.RevComp()
-				}
-				ss.ID = fmt.Sprintf("family%06d_member%04d", fam, id)
-				ss.Desc = fmt.Sprintf("%s:%d-%d %v (%d members - %d members within %.2f of maximum length)",
-					f.Chr, f.Start, f.End, f.Orient, len(v), validLengthed, lengthFrac,
-				)
-				if dir == "" {
-					fmt.Printf("%60a\n", &ss)
-				} else {
-					fmt.Fprintf(out, "%60a\n", &ss)
-				}
-			}
-			if dir == "" {
-				fmt.Println()
-			} else {
-				file := out.Name()
-				out.Close()
-				fam, lv, validLengthed, lengthFrac := fam, len(v), validLengthed, lengthFrac
-				acquire()
-				go func() {
-					defer release()
-					if aligner != "" {
-						c, err := consensus(file, aligner)
-						if err != nil {
-							log.Printf("failed to generate consensus for family%06d: %v", fam, err)
-						} else {
-							c.ID = fmt.Sprintf("family%06d_consensus", fam)
-							c.Desc = fmt.Sprintf("(%d members - %d members within %.2f of maximum length)",
-								lv, validLengthed, lengthFrac,
-							)
-							c.Threshold = 42
-							c.QFilter = seq.CaseFilter
-							file := fmt.Sprintf("family%06d_consensus.fq", fam)
-							out, err := os.Create(filepath.Join(dir, file))
-							if err != nil {
-								log.Printf("failed to create %s: %v", file, err)
-							} else {
-								fmt.Fprintf(out, "%60q\n", c)
-								out.Close()
-							}
-						}
-					}
-				}()
-			}
-			fam++
-		}
-		f.Close()
-	}
-	wait()
+	return refStore
 }
 
 var manager struct {
