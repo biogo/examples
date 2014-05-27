@@ -219,30 +219,10 @@ func writeJSON(cc []graph.Nodes, w io.Writer) error {
 				seen[a] = struct{}{}
 				f = append(f, a)
 			}
-
-			for _, im := range pile.Images {
-				partner := im.Mate().Location().(*pals.Pile)
-				if partner.Loc == nil || partner.Strand == seq.None && len(f) > 0 {
-					continue
-				}
-
-				a.C = partner.Location().Name()
-				a.S = partner.Start()
-				a.E = partner.End()
-				a.O = partner.Strand
-				if _, ok := seen[a]; ok {
-					continue
-				}
-
-				seen[a] = struct{}{}
-				f = append(f, a)
-			}
 		}
 		switch len(f) {
-		case 0:
+		case 0, 1:
 			continue
-		case 1:
-			f[0].O = seq.Plus
 		default:
 			for i := 0; i < len(f); {
 				if f[i].O == seq.None {
