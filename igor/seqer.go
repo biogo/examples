@@ -258,7 +258,10 @@ func consensus(in, aligner string) (*linear.QSeq, error) {
 	}
 	buf := &bytes.Buffer{}
 	m.Stdout = buf
-	m.Run()
+	err = m.Run()
+	if err != nil {
+		return nil, err
+	}
 	var (
 		r  = fasta.NewReader(buf, &linear.Seq{Annotation: seq.Annotation{Alpha: alphabet.DNA}})
 		ms = &multi.Multi{ColumnConsense: seq.DefaultQConsensus}
