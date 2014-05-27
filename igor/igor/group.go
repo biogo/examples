@@ -89,6 +89,7 @@ func Group(clust [][]*pals.Pile, cfg GroupConfig) []graph.Nodes {
 		}
 	}
 
+	log.Printf("constructed alignment graph with %d nodes and %d edges", g.g.Order(), g.g.Size())
 	cc := g.connectedComponents(func(e graph.Edge) bool {
 		te := e.(*twistEdge)
 		if te.twist == seq.None {
