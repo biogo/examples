@@ -52,6 +52,7 @@ func main() {
 			ft.FeatStart = f.Start
 			ft.FeatEnd = f.End
 			ft.FeatStrand = f.Orient
+			ft.FeatFrame = gff.NoFrame
 			ft.FeatAttributes[0].Value = fmt.Sprint(fam)
 			_, err := w.Write(ft)
 			if err != nil {
