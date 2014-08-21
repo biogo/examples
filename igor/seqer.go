@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,6 +48,7 @@ var (
 	dir        string
 	aligner    string
 	maxFam     int
+	subSample  bool
 	minFamily  int
 	lengthFrac float64
 	threads    int
@@ -54,6 +56,7 @@ var (
 
 func main() {
 	flag.IntVar(&maxFam, "maxFam", 0, "maxFam indicates maximum family size considered (0 == no limit).")
+	flag.BoolVar(&subSample, "subsample", false, "Choose maxFam members of a family if the family has more than maxFam members.")
 	flag.IntVar(&minFamily, "famsize", 2, "Minimum number of clusters per family (must be >= 2).")
 	flag.IntVar(&threads, "threads", 1, "Number of concurrent aligner instances to run.")
 	flag.StringVar(&refName, "ref", "", "Filename of fasta file containing reference sequence.")
@@ -128,7 +131,7 @@ func main() {
 				validLengthed++
 			}
 		}
-		if maxFam != 0 && validLengthed > maxFam {
+		if maxFam != 0 && !subSample && validLengthed > maxFam {
 			continue
 		}
 
@@ -141,9 +144,22 @@ func main() {
 			}
 		}
 
+		if subSample {
+			// Shuffle first.
+			w := make([]*feat, 0, len(v))
+			for _, j := range rand.Perm(len(v)) {
+				w = append(w, v[j])
+			}
+			v = w
+		}
+
+		var sampled int
 		for id, f := range v {
 			if f.End-f.Start < lenThresh {
 				continue
+			}
+			if sampled++; subSample && sampled > maxFam {
+				break
 			}
 			ss := *refStore[f.Chr]
 			sequtils.Truncate(&ss, refStore[f.Chr], f.Start, f.End)
