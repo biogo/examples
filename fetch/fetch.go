@@ -18,7 +18,7 @@ import (
 
 const (
 	db    = "protein"
-	query = `"reverse transcriptase" or "transposon" or "repetitive element" or "RNA-directed DNA polymerase" or "pol protein" or "non-LTR retrotransposon" or "mobile element" or "retroelement" or "polyprotein" or "retrovirus" or ("group-specific antigen" "gag") or "polymerase (pol)"`
+	query = `("Eukaryota"[Organism] and ("reverse transcriptase" or "transposon" or "repetitive element" or "RNA-directed DNA polymerase" or "pol protein" or "non-LTR retrotransposon" or "mobile element" or "retroelement" or "polyprotein" or "retrovirus" or ("group-specific antigen" "gag") or "polymerase (pol)")) or ("Retro-transcribing viruses"[Organism] and ("reverse transcriptase" or "repetitive element" or "RNA-directed DNA polymerase" or "pol protein" or "polyprotein" or ("group-specific antigen" "gag") or "polymerase (pol)"))`
 	tool  = "biogo.example"
 )
 
