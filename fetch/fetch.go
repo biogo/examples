@@ -94,7 +94,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		fmt.Fprintf(os.Stderr, "Retrieved records... writing out.\n", p.RetMax, p.RetStart)
+		fmt.Fprintln(os.Stderr, "Retrieved records... writing out.")
 		_n, err := io.Copy(of, buf)
 		n += _n
 		if err != nil {
