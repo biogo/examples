@@ -201,7 +201,7 @@ func main() {
 						if err != nil {
 							log.Printf("failed to create %s: %v", file, err)
 						} else {
-							fmt.Fprintf(out, "%60q\n", c)
+							fmt.Fprintf(out, "%q\n", c)
 							out.Close()
 						}
 					}
