@@ -18,11 +18,15 @@ import (
 
 const (
 	db    = "protein"
-	query = `("Eukaryota"[Organism] and ("reverse transcriptase" or "transposon" or "repetitive element" or "RNA-directed DNA polymerase" or "pol protein" or "non-LTR retrotransposon" or "mobile element" or "retroelement" or "polyprotein" or "retrovirus" or ("group-specific antigen" "gag") or "polymerase (pol)")) or ("Retro-transcribing viruses"[Organism] and ("reverse transcriptase" or "repetitive element" or "RNA-directed DNA polymerase" or "pol protein" or "polyprotein" or ("group-specific antigen" "gag") or "polymerase (pol)"))`
-	tool  = "biogo.example"
+	query = `(Eukaryota[Organism] OR ("Retro-transcribing viruses"[Organism] NOT Hepadnaviridae)) AND ` +
+		`(("group-specific antigen" OR "gag") OR ("Reverse transcriptase (RNA-dependent DNA polymerase)" OR "pol")) ` +
+		`NOT (partial)`
+
+	tool = "biogo.example"
 )
 
 var (
+	clQuery = flag.String("query", query, "query specifies the search query for record retrieval.")
 	rettype = flag.String("rettype", "fasta", "rettype specifies the format of the returned data.")
 	retmax  = flag.Int("retmax", 500, "retmax specifies the number of records to be retrieved per request.")
 	out     = flag.String("out", "", "out specifies destination of the returned data (default to stdout).")
@@ -44,7 +48,7 @@ func main() {
 	}
 
 	h := entrez.History{}
-	s, err := entrez.DoSearch(db, query, nil, &h, tool, *email)
+	s, err := entrez.DoSearch(db, *clQuery, nil, &h, tool, *email)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
