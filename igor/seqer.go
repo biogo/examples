@@ -52,6 +52,7 @@ var (
 	minFamily  int
 	lengthFrac float64
 	threads    int
+	consFasta  bool
 )
 
 func main() {
@@ -61,6 +62,7 @@ func main() {
 	flag.IntVar(&threads, "threads", 1, "Number of concurrent aligner instances to run.")
 	flag.StringVar(&refName, "ref", "", "Filename of fasta file containing reference sequence.")
 	flag.StringVar(&aligner, "aligner", "", "Aligner to use to generate consensus (muscle or mafft).")
+	flag.BoolVar(&consFasta, "fasta", false, "Output consensus as fasta with quality case filtering.")
 	flag.Float64Var(&lengthFrac, "minLen", 0, "Minimum proportion of longest family member.")
 	flag.StringVar(&dir, "dir", "", "Target directory for output. If not empty dir is deleted first.")
 	flag.Parse()
@@ -201,7 +203,11 @@ func main() {
 						if err != nil {
 							log.Printf("failed to create %s: %v", file, err)
 						} else {
-							fmt.Fprintf(out, "%q\n", c)
+							if consFasta {
+								fmt.Fprintf(out, "%60a\n", c)
+							} else {
+								fmt.Fprintf(out, "%q\n", c)
+							}
 							out.Close()
 						}
 					}
