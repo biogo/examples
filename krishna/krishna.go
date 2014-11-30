@@ -274,4 +274,6 @@ func main() {
 	for _, p := range pa {
 		p.CleanUp()
 	}
+
+	logger.Print("Finished.")
 }
