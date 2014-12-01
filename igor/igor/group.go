@@ -34,7 +34,7 @@ type GroupConfig struct {
 }
 
 // Group clusters the input pile collection based on the existence of satisfactory
-// image alignments accoring to the provided config. Piles with nil locations are
+// image alignments according to the provided config. Piles with nil locations are
 // ignored. Checks are performed to ensure that the produced clusters can be
 // unambiguously assigned to a DNA strand.
 func Group(clust [][]*pals.Pile, cfg GroupConfig) []graph.Nodes {
