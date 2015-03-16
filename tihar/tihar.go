@@ -15,7 +15,9 @@ import (
 	"github.com/biogo/biogo/io/seqio/fasta"
 	"github.com/biogo/biogo/seq/linear"
 
-	"code.google.com/p/biogo.matrix"
+	"github.com/gonum/matrix/mat64"
+
+	"github.com/kortschak/nmf"
 )
 
 func main() {
@@ -31,7 +33,7 @@ func main() {
 	k := flag.Int("k", 8, "kmer size to use.")
 	cat := flag.Int("cat", 5, "number of categories.")
 	iter := flag.Int("i", 1000, "iterations.")
-	limit := flag.Int("time", 10, "time limit for NMF.")
+	limit := flag.Duration("time", 10*time.Second, "time limit for NMF.")
 	lo := flag.Int("lo", 1, "minimum number of kmer frequency to use in NMF.")
 	hi := flag.Float64("hi", 0.9, "maximum proportion of kmer representation to use in NMF.")
 	tol := flag.Float64("tol", 0.001, "tolerance for NMF.")
@@ -124,11 +126,12 @@ func main() {
 		}
 	}
 
-	kmerArray := make([][]float64, 0)
-	kmerTable := make([]kmerindex.Kmer, 0)
-	positionsTable := make(map[int]int)
-	currPos := 0
-
+	var (
+		kmerArray      []float64
+		kmerTable      []kmerindex.Kmer
+		positionsTable = make(map[int]int)
+		currPos        int
+	)
 	for kmer, count := range kmers {
 		if count < *lo || float64(count)/float64(maxPos) > *hi {
 			continue
@@ -146,23 +149,19 @@ func main() {
 				currPos++
 			}
 		}
-		kmerArray = append(kmerArray, row)
+		kmerArray = append(kmerArray, row...)
 		kmerTable = append(kmerTable, kmerindex.Kmer(kmer))
 	}
 
-	kMat, err := matrix.NewDense(kmerArray)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(1)
-	}
-
-	f := func(i, j int, v float64) float64 {
-		if kMat.At(i, j) != 0 {
-			return 1
+	kMat := mat64.NewDense(len(kmerTable), len(kmers), kmerArray)
+	var nonZero float64
+	f := func(_, _ int, v float64) float64 {
+		if v != 0 {
+			nonZero++
 		}
-		return 0
+		return v
 	}
-	nonZero := kMat.Apply(f, kMat).Sum()
+	kMat.Apply(f, kMat)
 
 	r, c := kMat.Dims()
 	density := nonZero / float64(r*c)
@@ -173,27 +172,19 @@ func main() {
 	fmt.Fprintf(os.Stderr, "Using %v as random seed.\n", *seed)
 	rand.Seed(*seed)
 
-	rows, cols := kMat.Dims()
+	posNorm := func(_, _ int, _ float64) float64 { return math.Abs(rand.NormFloat64()) }
 
-	posNorm := func() float64 { return math.Abs(rand.NormFloat64()) }
+	Wo := mat64.NewDense(r, *cat, nil)
+	Wo.Apply(posNorm, Wo)
 
-	Wo, err := matrix.FuncDense(rows, *cat, 1, posNorm)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(1)
-	}
-
-	Ho, err := matrix.FuncDense(*cat, cols, 1, posNorm)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(1)
-	}
+	Ho := mat64.NewDense(*cat, c, nil)
+	Ho.Apply(posNorm, Ho)
 
 	fmt.Fprintf(os.Stderr, "Dimensions of Kmer matrix = (%v, %v)\nDensity = %.3f %%\n%v\n", r, c, (density)*100, kMat)
 
-	W, H, ok := matrix.Factors(kMat, Wo, Ho, *tol, *iter, time.Duration(*limit)*1e9)
+	W, H, ok := nmf.Factors(kMat, Wo, Ho, nmf.Config{Tolerance: *tol, MaxIter: *iter, Limit: *limit})
 
-	fmt.Fprintf(os.Stderr, "norm(H) = %v norm(W) = %v\n\nFinished = %v\n\n", H.Norm(matrix.Fro), W.Norm(matrix.Fro), ok)
+	fmt.Fprintf(os.Stderr, "norm(H) = %v norm(W) = %v\n\nFinished = %v\n\n", H.Norm(0), W.Norm(0), ok)
 
 	printFeature(out, csv, kMat, W, H, motifs, kmerTable, positionsTable, maxPos, *k)
 }
@@ -217,7 +208,7 @@ func (self WeightList) Less(i, j int) bool {
 	return self[i].weight > self[j].weight
 }
 
-func printFeature(out, csv *os.File, V, W, H matrix.Matrix, motifs map[kmerindex.Kmer]map[int]map[string]bool, kmerTable []kmerindex.Kmer, positionsTable map[int]int, maxPos, k int) {
+func printFeature(out, csv *os.File, V, W, H *mat64.Dense, motifs map[kmerindex.Kmer]map[int]map[string]bool, kmerTable []kmerindex.Kmer, positionsTable map[int]int, maxPos, k int) {
 	patternCount, posCount := H.Dims()
 	kmerCount, _ := W.Dims()
 

@@ -14,7 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"code.google.com/p/biogo.matrix"
+	"github.com/gonum/matrix/mat64"
+
+	"github.com/kortschak/nmf"
 )
 
 func main() {
@@ -32,7 +34,7 @@ func main() {
 	cat := flag.Int("cat", 5, "number of categories.")
 	iter := flag.Int("i", 1000, "iterations.")
 	rep := flag.Int("rep", 1, "Resample replicates.")
-	limit := flag.Int("time", 10, "time limit for NMF.")
+	limit := flag.Duration("time", 10*time.Second, "time limit for NMF.")
 	tol := flag.Float64("tol", 0.001, "tolerance for NMF.")
 	seed := flag.Int64("seed", -1, "seed for random number generator (-1 uses system clock).")
 	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to this file.")
@@ -80,9 +82,12 @@ func main() {
 	}
 	defer out.Flush()
 
-	var colNames, rowNames []string
-	array := make([][]float64, 0)
+	var (
+		colNames, rowNames []string
 
+		r    int
+		data []float64
+	)
 	if line, err := in.ReadString('\n'); err != nil {
 		fmt.Fprintln(os.Stderr, "No table to read\n")
 		os.Exit(1)
@@ -109,28 +114,26 @@ func main() {
 					}
 				}
 				rowNames = append(rowNames, row[0])
-				array = append(array, rowData)
+				data = append(data, rowData...)
+				r++
 			}
 		}
 	}
 
-	mat, err := matrix.NewDense(array)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(1)
-	}
+	mat := mat64.NewDense(r, len(colNames), data)
 
-	f := func(i, j int, v float64) float64 {
-		if mat.At(i, j) != 0 {
-			return 1
+	var nonZero float64
+	f := func(_, _ int, v float64) float64 {
+		if v != 0 {
+			nonZero++
 		}
-		return 0
+		return v
 	}
-	nonZero := mat.Apply(f, mat).Sum()
+	mat.Apply(f, mat)
 
 	if *transpose {
 		colNames, rowNames = rowNames, colNames
-		mat = mat.TDense(nil)
+		mat.TCopy(mat)
 	}
 	r, c := mat.Dims()
 
@@ -142,8 +145,6 @@ func main() {
 	fmt.Fprintf(os.Stderr, "Using %v as random seed.\n", *seed)
 	rand.Seed(*seed)
 
-	rows, cols := mat.Dims()
-
 	fmt.Fprintf(os.Stderr, "Dimensions of matrix = (%v, %v)\nDensity = %.3f %%\n%v\n", r, c, (density)*100, mat)
 
 	for run := 0; run < *rep; run++ {
@@ -151,23 +152,17 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Replicate #%d\n", run+1)
 		}
 
-		posNorm := func() float64 { return math.Abs(rand.NormFloat64()) }
+		posNorm := func(_, _ int, _ float64) float64 { return math.Abs(rand.NormFloat64()) }
 
-		Wo, err := matrix.FuncDense(rows, *cat, 1, posNorm)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.", err)
-			os.Exit(1)
-		}
+		Wo := mat64.NewDense(r, *cat, nil)
+		Wo.Apply(posNorm, Wo)
 
-		Ho, err := matrix.FuncDense(*cat, cols, 1, posNorm)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v.", err)
-			os.Exit(1)
-		}
+		Ho := mat64.NewDense(*cat, c, nil)
+		Ho.Apply(posNorm, Ho)
 
-		W, H, ok := matrix.Factors(mat, Wo, Ho, *tol, *iter, time.Duration(*limit)*1e9)
+		W, H, ok := nmf.Factors(mat, Wo, Ho, nmf.Config{Tolerance: *tol, MaxIter: *iter, Limit: *limit})
 
-		fmt.Fprintf(os.Stderr, "norm(H) = %v norm(W) = %v\n\nFinished = %v\n\n", H.Norm(matrix.Fro), W.Norm(matrix.Fro), ok)
+		fmt.Fprintf(os.Stderr, "norm(H) = %v norm(W) = %v\n\nFinished = %v\n\n", H.Norm(0), W.Norm(0), ok)
 
 		printFeature(out, run, mat, W, H, rowNames, colNames)
 	}
@@ -192,7 +187,7 @@ func (self WeightList) Less(i, j int) bool {
 	return self[i].weight > self[j].weight
 }
 
-func printFeature(out io.Writer, run int, V, W, H matrix.Matrix, rowNames, colNames []string) {
+func printFeature(out io.Writer, run int, V, W, H *mat64.Dense, rowNames, colNames []string) {
 	patternCount, colCount := H.Dims()
 	rowCount, _ := W.Dims()
 
