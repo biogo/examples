@@ -1,18 +1,18 @@
 package main
 
 import (
-	"code.google.com/p/biogo.graphics/color"
-	"code.google.com/p/biogo.graphics/kmercolor"
-	"code.google.com/p/biogo/alphabet"
-	"code.google.com/p/biogo/index/kmerindex"
-	"code.google.com/p/biogo/io/seqio/fasta"
-	"code.google.com/p/biogo/seq/linear"
-
 	"flag"
 	"fmt"
 	"image"
 	"image/png"
 	"os"
+
+	"github.com/biogo/biogo/alphabet"
+	"github.com/biogo/biogo/index/kmerindex"
+	"github.com/biogo/biogo/io/seqio/fasta"
+	"github.com/biogo/biogo/seq/linear"
+	"github.com/biogo/graphics/kmercolor"
+	"github.com/biogo/graphics/palette"
 )
 
 func main() {
@@ -56,7 +56,7 @@ func main() {
 				fmt.Println(err)
 				os.Exit(1)
 			} else {
-				base := color.HSVA{0, 1, 0, 1}
+				base := palette.HSVA{0, 1, 0, 1}
 				rainbow := kmercolor.NewKmerRainbow(image.Rect(0, 0, s.Len() / *chunk, *height), index, base)
 				for i := 0; (i+1)**chunk < s.Len(); i++ {
 					rainbow.Paint(kmercolor.V, i, *chunk, i, i+1)

@@ -7,13 +7,13 @@
 package main
 
 import (
-	"code.google.com/p/biogo.ncbi/entrez"
-
 	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/biogo/ncbi/entrez"
 )
 
 const (

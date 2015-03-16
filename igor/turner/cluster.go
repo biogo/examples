@@ -5,11 +5,11 @@
 package turner
 
 import (
-	"code.google.com/p/biogo.store/interval"
-	"code.google.com/p/biogo/align/pals"
-	"code.google.com/p/biogo/feat"
-
 	"sort"
+
+	"github.com/biogo/biogo/align/pals"
+	"github.com/biogo/biogo/feat"
+	"github.com/biogo/store/interval"
 )
 
 type pairings struct {

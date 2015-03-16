@@ -5,13 +5,13 @@
 package igor
 
 import (
-	"code.google.com/p/biogo.graph"
-	"code.google.com/p/biogo/align/pals"
-	"code.google.com/p/biogo/seq"
-
 	"fmt"
 	"log"
 	"os"
+
+	"github.com/biogo/biogo/align/pals"
+	"github.com/biogo/biogo/seq"
+	"github.com/biogo/graph"
 )
 
 // GroupConfig specifies Group behaviour

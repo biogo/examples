@@ -7,19 +7,19 @@
 package main
 
 import (
-	"code.google.com/p/biogo.examples/igor/igor"
-
-	"code.google.com/p/biogo.graph"
-	"code.google.com/p/biogo/align/pals"
-	"code.google.com/p/biogo/io/featio/gff"
-	"code.google.com/p/biogo/seq"
-
 	"bufio"
 	"encoding/json"
 	"flag"
 	"io"
 	"log"
 	"os"
+
+	"github.com/biogo/biogo/align/pals"
+	"github.com/biogo/biogo/io/featio/gff"
+	"github.com/biogo/biogo/seq"
+	"github.com/biogo/graph"
+
+	"github.com/biogo/examples/igor/igor"
 )
 
 func min(a, b int) int {

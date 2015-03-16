@@ -5,9 +5,9 @@
 package igor
 
 import (
-	"code.google.com/p/biogo/align/pals"
-	"code.google.com/p/biogo/io/featio"
-	"code.google.com/p/biogo/io/featio/gff"
+	"github.com/biogo/biogo/align/pals"
+	"github.com/biogo/biogo/io/featio"
+	"github.com/biogo/biogo/io/featio/gff"
 )
 
 // store is a pals.Contig internment implementation.

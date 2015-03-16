@@ -5,12 +5,6 @@
 package igor
 
 import (
-	"code.google.com/p/biogo.examples/igor/turner"
-
-	"code.google.com/p/biogo.store/interval"
-	"code.google.com/p/biogo.store/step"
-	"code.google.com/p/biogo/align/pals"
-
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -20,6 +14,12 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+
+	"github.com/biogo/biogo/align/pals"
+	"github.com/biogo/store/interval"
+	"github.com/biogo/store/step"
+
+	"github.com/biogo/examples/igor/turner"
 )
 
 func min(a, b int) int {

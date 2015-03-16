@@ -8,13 +8,14 @@
 package main
 
 import (
-	"code.google.com/p/biogo.store/interval"
-	"code.google.com/p/biogo/io/featio/bed"
 	"flag"
 	"fmt"
 	"math"
 	"os"
 	"unsafe"
+
+	"github.com/biogo/biogo/io/featio/bed"
+	"github.com/biogo/store/interval"
 )
 
 type trees map[string]*interval.IntTree

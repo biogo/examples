@@ -2,10 +2,6 @@
 package main
 
 import (
-	"code.google.com/p/biogo/align/pals"
-	"code.google.com/p/biogo/align/pals/filter"
-	"code.google.com/p/biogo/morass"
-
 	"bufio"
 	"flag"
 	"fmt"
@@ -21,6 +17,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/biogo/biogo/align/pals"
+	"github.com/biogo/biogo/align/pals/filter"
+	"github.com/biogo/biogo/morass"
 )
 
 const (

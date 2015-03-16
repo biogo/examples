@@ -6,14 +6,15 @@ package main
 
 import (
 	"bufio"
-	"code.google.com/p/biogo.graph"
-	"code.google.com/p/biogo.store/interval"
-	"code.google.com/p/biogo/seq"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"unsafe"
+
+	"github.com/biogo/biogo/seq"
+	"github.com/biogo/graph"
+	"github.com/biogo/store/interval"
 )
 
 type Trees struct {
@@ -204,7 +205,7 @@ func main() {
 		}
 	}
 
-	cc := g.ConnectedComponents(graph.EdgeFilter(func(e graph.Edge) bool {
+	cc := graph.ConnectedComponents(g, graph.EdgeFilter(func(e graph.Edge) bool {
 		// We need to correct orientation here.
 		return true
 	}))

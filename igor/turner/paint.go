@@ -5,9 +5,9 @@
 package turner
 
 import (
-	"code.google.com/p/biogo.store/interval"
-	"code.google.com/p/biogo.store/interval/landscape"
-	"code.google.com/p/biogo/align/pals"
+	"github.com/biogo/biogo/align/pals"
+	"github.com/biogo/store/interval"
+	"github.com/biogo/store/interval/landscape"
 )
 
 // Lambda is a collection of lambda functions for a single sequence position.

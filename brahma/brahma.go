@@ -7,12 +7,6 @@
 package main
 
 import (
-	"code.google.com/p/biogo.store/interval"
-	"code.google.com/p/biogo/feat"
-	"code.google.com/p/biogo/io/featio/gff"
-	"code.google.com/p/biogo/seq"
-	"code.google.com/p/biogo/util"
-
 	"bufio"
 	"bytes"
 	"container/heap"
@@ -26,6 +20,12 @@ import (
 	"strings"
 	"sync"
 	"unsafe"
+
+	"github.com/biogo/biogo/feat"
+	"github.com/biogo/biogo/io/featio/gff"
+	"github.com/biogo/biogo/seq"
+	"github.com/biogo/biogo/util"
+	"github.com/biogo/store/interval"
 )
 
 const (

@@ -1,10 +1,10 @@
 package main
 
 import (
-	"code.google.com/p/biogo/align/pals"
-	"code.google.com/p/biogo/align/pals/dp"
-
 	"sync"
+
+	"github.com/biogo/biogo/align/pals"
+	"github.com/biogo/biogo/align/pals/dp"
 )
 
 var wlock = &sync.Mutex{}

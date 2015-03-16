@@ -3,14 +3,14 @@
 package main
 
 import (
-	"code.google.com/p/biogo/alphabet"
-	"code.google.com/p/biogo/index/kmerindex"
-	"code.google.com/p/biogo/io/seqio/fasta"
-	"code.google.com/p/biogo/seq/linear"
-
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/biogo/biogo/alphabet"
+	"github.com/biogo/biogo/index/kmerindex"
+	"github.com/biogo/biogo/io/seqio/fasta"
+	"github.com/biogo/biogo/seq/linear"
 )
 
 func main() {

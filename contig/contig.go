@@ -7,14 +7,14 @@
 package contig
 
 import (
-	"code.google.com/p/biogo.store/step"
-	"code.google.com/p/biogo/alphabet"
-	"code.google.com/p/biogo/seq"
-	"code.google.com/p/biogo/seq/sequtils"
-	"code.google.com/p/biogo/util"
-
 	"errors"
 	"fmt"
+
+	"github.com/biogo/biogo/alphabet"
+	"github.com/biogo/biogo/seq"
+	"github.com/biogo/biogo/seq/sequtils"
+	"github.com/biogo/biogo/util"
+	"github.com/biogo/store/step"
 )
 
 type seqStep struct {

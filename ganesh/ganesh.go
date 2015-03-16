@@ -1,8 +1,6 @@
 package main
 
 import (
-	"code.google.com/p/biogo.matrix"
-
 	"bufio"
 	"flag"
 	"fmt"
@@ -15,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"code.google.com/p/biogo.matrix"
 )
 
 func main() {

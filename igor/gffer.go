@@ -8,14 +8,14 @@
 package main
 
 import (
-	"code.google.com/p/biogo/io/featio/gff"
-	"code.google.com/p/biogo/seq"
-
 	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+
+	"github.com/biogo/biogo/io/featio/gff"
+	"github.com/biogo/biogo/seq"
 )
 
 type feat struct {
