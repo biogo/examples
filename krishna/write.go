@@ -9,7 +9,7 @@ import (
 
 var wlock = &sync.Mutex{}
 
-func WriteDPHits(w *pals.Writer, target, query *pals.Packed, hits []dp.DPHit, comp bool) (n int, err error) {
+func WriteDPHits(w *pals.Writer, target, query *pals.Packed, hits []dp.Hit, comp bool) (n int, err error) {
 	wlock.Lock()
 	defer wlock.Unlock()
 

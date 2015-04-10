@@ -191,7 +191,7 @@ func main() {
 	}
 
 	m := func() *morass.Morass {
-		m, err := morass.New(filter.FilterHit{}, "krishna_"+strconv.Itoa(pid)+"_", tmpDir, tmpChunk, tmpConcurrent)
+		m, err := morass.New(filter.Hit{}, "krishna_"+strconv.Itoa(pid)+"_", tmpDir, tmpChunk, tmpConcurrent)
 		if err != nil {
 			logger.Fatalf("Error: %v", err)
 		}
