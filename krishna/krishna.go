@@ -158,20 +158,6 @@ func main() {
 		logger.Fatalln("No target provided.")
 	}
 
-	var writer *pals.Writer
-	if outFile == "" {
-		writer = pals.NewWriter(os.Stdout, 2, 60, false)
-	} else {
-		out, err := os.Create(outFile)
-		if err != nil {
-			log.Fatalf("Could not open output file: %v", err)
-		}
-		defer out.Close()
-		buf := bufio.NewWriter(out)
-		defer buf.Flush()
-		writer = pals.NewWriter(buf, 2, 60, false)
-	}
-
 	if !selfCompare {
 		if queryName != "" {
 			var err error
@@ -184,6 +170,20 @@ func main() {
 		}
 	} else {
 		query = target
+	}
+
+	var writer *pals.Writer
+	if outFile == "" {
+		writer = pals.NewWriter(os.Stdout, 2, 60, false)
+	} else {
+		out, err := os.Create(outFile)
+		if err != nil {
+			log.Fatalf("Could not open output file: %v", err)
+		}
+		defer out.Close()
+		buf := bufio.NewWriter(out)
+		defer buf.Flush()
+		writer = pals.NewWriter(buf, 2, 60, false)
 	}
 
 	if maxK > 0 {
