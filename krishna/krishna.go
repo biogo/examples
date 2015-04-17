@@ -36,6 +36,7 @@ var (
 	selfCompare   bool
 	sameStrand    bool
 	outFile       string
+	trapFile      bool
 	maxK          int
 	minHitLen     int
 	minId         float64
@@ -62,6 +63,7 @@ func init() {
 	flag.BoolVar(&sameStrand, "same", false, "Only compare same strand")
 
 	flag.StringVar(&outFile, "out", "", "File to send output to.")
+	flag.BoolVar(&trapFile, "traps", false, "Specifies whether to keep trapezoid seeds.")
 
 	flag.IntVar(&maxK, "k", -1, "Maximum kmer length (negative indicates automatic detection based on architecture).")
 	flag.IntVar(&minHitLen, "filtlen", 400, "Minimum hit length for filter.")
@@ -240,6 +242,13 @@ func main() {
 				if err != nil {
 					logger.Fatalf("Error: %v", err)
 				}
+				if trapFile {
+					logger.Println("Writing trapezoid data")
+					err = WriteTraps(comp, p.Trapezoids())
+					if err != nil {
+						logger.Fatalf("Error: %v", err)
+					}
+				}
 
 				logger.Println("Writing results")
 				n, err := WriteDPHits(writer, target, query, hits, comp)
@@ -258,6 +267,13 @@ func main() {
 				hits, err := pa[0].Align(comp)
 				if err != nil {
 					logger.Fatalf("Error: %v", err)
+				}
+				if trapFile {
+					logger.Println("Writing trapezoid data")
+					err = WriteTraps(comp, pa[0].Trapezoids())
+					if err != nil {
+						logger.Fatalf("Error: %v", err)
+					}
 				}
 
 				logger.Println("Writing results")
