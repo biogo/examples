@@ -199,9 +199,9 @@ func main() {
 		}
 		return m
 	}
-	pa := []*pals.PALS{pals.New(target.Seq, query.Seq, selfCompare, m(), threads, tubeOffset, mem, logger)}
+	pa := []*pals.PALS{pals.New(target.Seq, query.Seq, selfCompare, m(), tubeOffset, mem, logger)}
 	if threads > 1 {
-		pa = append(pa, pals.New(target.Seq, query.Seq, selfCompare, m(), threads, tubeOffset, mem, logger))
+		pa = append(pa, pals.New(target.Seq, query.Seq, selfCompare, m(), tubeOffset, mem, logger))
 	}
 
 	if err := pa[0].Optimise(minHitLen, minId); err != nil {
