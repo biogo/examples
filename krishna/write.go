@@ -40,7 +40,7 @@ func WriteTraps(comp bool, traps filter.Trapezoids) error {
 	} else {
 		d = "fwd"
 	}
-	tf, err := os.Create(fmt.Sprintf("%s-%d.gob", outFile, d))
+	tf, err := os.Create(fmt.Sprintf("%s-%s.gob", outFile, d))
 	if err != nil {
 		return err
 	}
