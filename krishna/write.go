@@ -1,7 +1,8 @@
 package main
 
 import (
-	"encoding/gob"
+	"compress/gzip"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"sync"
@@ -40,12 +41,16 @@ func WriteTraps(comp bool, traps filter.Trapezoids) error {
 	} else {
 		d = "fwd"
 	}
-	tf, err := os.Create(fmt.Sprintf("%s-%s.gob", outFile, d))
+	tf, err := os.Create(fmt.Sprintf("%s-%s.traps.le.gz", outFile, d))
 	if err != nil {
 		return err
 	}
-	enc := gob.NewEncoder(tf)
-	err = enc.Encode(traps)
+	gz := gzip.NewWriter(tf)
+	err = binary.Write(gz, binary.LittleEndian, traps)
+	if err != nil {
+		return err
+	}
+	err = gz.Close()
 	if err != nil {
 		return err
 	}
