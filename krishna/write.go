@@ -68,11 +68,11 @@ func init() {
 }
 
 func unsafeTraps(traps []filter.Trapezoid) interface{} {
-	switch {
-	case unsafe.Sizeof(int(0)) == unsafe.Sizeof(int64(0)):
+	switch unsafe.Sizeof(int(0)) {
+	case unsafe.Sizeof(int64(0)):
 		type trapezoid64 struct{ Top, Bottom, Left, Right int64 }
 		return *(*[]trapezoid64)(unsafe.Pointer(&traps))
-	case unsafe.Sizeof(int(0)) == unsafe.Sizeof(int32(0)):
+	case unsafe.Sizeof(int32(0)):
 		type trapezoid32 struct{ Top, Bottom, Left, Right int32 }
 		return *(*[]trapezoid32)(unsafe.Pointer(&traps))
 	default:
