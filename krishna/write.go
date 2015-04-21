@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"unsafe"
 
 	"github.com/biogo/biogo/align/pals"
 	"github.com/biogo/biogo/align/pals/dp"
@@ -46,7 +47,8 @@ func WriteTraps(comp bool, traps filter.Trapezoids) error {
 		return err
 	}
 	gz := gzip.NewWriter(tf)
-	err = binary.Write(gz, binary.LittleEndian, traps)
+	// TODO(kortschak): Write int size to file so we are arch independent.
+	err = binary.Write(gz, binary.LittleEndian, unsafeTraps(traps))
 	if err != nil {
 		return err
 	}
@@ -55,4 +57,25 @@ func WriteTraps(comp bool, traps filter.Trapezoids) error {
 		return err
 	}
 	return tf.Close()
+}
+
+func init() {
+	switch unsafe.Sizeof(int(0)) {
+	case unsafe.Sizeof(int64(0)), unsafe.Sizeof(int32(0)):
+	default:
+		panic("int type unknown size")
+	}
+}
+
+func unsafeTraps(traps []filter.Trapezoid) interface{} {
+	switch {
+	case unsafe.Sizeof(int(0)) == unsafe.Sizeof(int64(0)):
+		type trapezoid64 struct{ Top, Bottom, Left, Right int64 }
+		return *(*[]trapezoid64)(unsafe.Pointer(&traps))
+	case unsafe.Sizeof(int(0)) == unsafe.Sizeof(int32(0)):
+		type trapezoid32 struct{ Top, Bottom, Left, Right int32 }
+		return *(*[]trapezoid32)(unsafe.Pointer(&traps))
+	default:
+		panic("int type unknown size")
+	}
 }
