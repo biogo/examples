@@ -144,7 +144,6 @@ func (c *Contig) RevComp() {
 	})
 	c.vector = v
 	c.Strand = -c.Strand
-	fmt.Println()
 }
 
 // Reverse reverses the Contig and its contained sequences.
