@@ -99,7 +99,7 @@ func runSelf(t int, target, workdir string) {
 		return
 	}
 
-	cmd := exec.Command(krishna, "-tmp="+workdir, "-threads=2", "-log", "-target="+target, "-self", "-out="+outfile)
+	cmd := exec.Command(krishna, "-tmp="+workdir, "-threads=2", "-traps", "-log", "-target="+target, "-self", "-out="+outfile)
 	cmd.Stderr = b
 	err := cmd.Run()
 	if err != nil {
@@ -129,7 +129,7 @@ func runPair(t int, target, query, workdir string) {
 		return
 	}
 
-	cmd := exec.Command(krishna, "-tmp="+workdir, "-threads=2", "-log", "-target="+target, "-query="+query, "-out="+outfile)
+	cmd := exec.Command(krishna, "-tmp="+workdir, "-threads=2", "-traps", "-log", "-target="+target, "-query="+query, "-out="+outfile)
 	cmd.Stderr = b
 	err := cmd.Run()
 	if err != nil {
