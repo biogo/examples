@@ -55,9 +55,10 @@ func (b stepBool) Equal(e step.Equaler) bool {
 }
 
 var (
-	in     = flag.String("in", "", "Specifies the input json file name.")
-	dotOut = flag.String("dot", "", "Specifies the output DOT file name.")
-	thresh = flag.Float64("thresh", 0.1, "Specifies minimum family intersection to report.")
+	in      = flag.String("in", "", "Specifies the input json file name.")
+	dotOut  = flag.String("dot", "", "Specifies the output DOT file name.")
+	thresh  = flag.Float64("thresh", 0.1, "Specifies minimum family intersection to report.")
+	cliques = flag.Bool("cliques", false, "Find cliques in non-clique clusters.")
 )
 
 func main() {
@@ -129,7 +130,7 @@ func main() {
 	}
 
 	const minSubClique = 3
-	grps := groups(families, edges, minSubClique)
+	grps := groups(families, edges, minSubClique, *cliques)
 
 	clusterIdentity := make(map[int]int)
 	cliqueIdentity := make(map[int][]int)
@@ -374,7 +375,7 @@ func (e edge) DOTAttributes() []dot.Attribute {
 	return []dot.Attribute{{"weight", fmt.Sprint(e.weight)}}
 }
 
-func groups(fams []family, edges []edge, minSubClique int) []group {
+func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group {
 	g := concrete.NewGraph()
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
@@ -398,7 +399,7 @@ func groups(fams []family, edges []edge, minSubClique int) []group {
 		}
 		if len(grp.members) == 2 || edgesIn(g, c)*2 == len(c)*(len(c)-1) {
 			grp.isClique = true
-		} else {
+		} else if cliques {
 			grp.cliques = cliquesIn(grp, edges, minSubClique)
 		}
 		if len(grp.members) > 1 {
