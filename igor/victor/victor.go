@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// victore is a post processor for grouping families defined by igor.
+// victor is a post processor for grouping families defined by igor.
 package main
 
 import (
