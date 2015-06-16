@@ -207,9 +207,11 @@ func main() {
 	if err := pa[0].Optimise(minHitLen, minId); err != nil {
 		logger.Fatalf("Error: %v", err)
 	}
-	if dpMinHitLen != 0 && dpMinId != 0 {
-		pa[0].DPParams.MinHitLength = minHitLen
-		pa[0].DPParams.MinId = minId
+	if dpMinHitLen != 0 {
+		pa[0].DPParams.MinHitLength = dpMinHitLen
+	}
+	if dpMinId != 0 {
+		pa[0].DPParams.MinId = dpMinId
 	}
 
 	logger.Printf("Using filter parameters:")
