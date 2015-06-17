@@ -107,8 +107,8 @@ func main() {
 
 			fmt.Fprintln(os.Stderr, aid, bid, upper)
 			edges = append(edges, edge{
-				from:   concrete.Node(aid),
-				to:     concrete.Node(bid),
+				from:   node{id: aid, members: len(a.members)},
+				to:     node{id: bid, members: len(b.members)},
 				weight: upper,
 			})
 
@@ -118,8 +118,8 @@ func main() {
 
 			fmt.Fprintln(os.Stderr, bid, aid, lower)
 			edges = append(edges, edge{
-				from:   concrete.Node(bid),
-				to:     concrete.Node(aid),
+				from:   node{id: bid, members: len(b.members)},
+				to:     node{id: aid, members: len(a.members)},
 				weight: lower,
 			})
 		}
@@ -360,6 +360,16 @@ type group struct {
 	isClique bool
 	cliques  [][]int
 	pageRank ranks
+}
+
+type node struct {
+	id      int
+	members int
+}
+
+func (n node) ID() int { return n.id }
+func (n node) DOTAttributes() []dot.Attribute {
+	return []dot.Attribute{{"members", fmt.Sprint(n.members)}}
 }
 
 type edge struct {
