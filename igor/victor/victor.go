@@ -57,7 +57,7 @@ func (b stepBool) Equal(e step.Equaler) bool {
 var (
 	in      = flag.String("in", "", "Specifies the input json file name.")
 	dotOut  = flag.String("dot", "", "Specifies the output DOT file name.")
-	thresh  = flag.Float64("thresh", 0.1, "Specifies minimum family intersection to report.")
+	thresh  = flag.Float64("thresh", 0.05, "Specifies minimum family intersection to report.")
 	cliques = flag.Bool("cliques", false, "Find cliques in non-clique clusters.")
 )
 
