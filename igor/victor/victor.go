@@ -14,7 +14,9 @@ import (
 	"log"
 	"math"
 	"os"
+	"runtime"
 	"sort"
+	"sync"
 
 	"github.com/biogo/biogo/io/featio/gff"
 	"github.com/biogo/biogo/seq"
@@ -27,38 +29,12 @@ import (
 	"github.com/gonum/graph/search"
 )
 
-type family struct {
-	id      int
-	members []feature
-	length  int
-}
-
-type byMembers []family
-
-func (f byMembers) Len() int           { return len(f) }
-func (f byMembers) Less(i, j int) bool { return len(f[i].members) > len(f[j].members) }
-func (f byMembers) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
-
-type feature struct {
-	Chr    string     `json:"C"`
-	Start  int        `json:"S"`
-	End    int        `json:"E"`
-	Orient seq.Strand `json:"O"`
-}
-
-// stepBool is a bool type satisfying the step.Equaler interface.
-type stepBool bool
-
-// Equal returns whether b equals e. Equal assumes the underlying type of e is a stepBool.
-func (b stepBool) Equal(e step.Equaler) bool {
-	return b == e.(stepBool)
-}
-
 var (
 	in      = flag.String("in", "", "Specifies the input json file name.")
 	dotOut  = flag.String("dot", "", "Specifies the output DOT file name.")
 	thresh  = flag.Float64("thresh", 0.05, "Specifies minimum family intersection to report.")
 	cliques = flag.Bool("cliques", false, "Find cliques in non-clique clusters.")
+	threads = flag.Int("threads", 0, "Specify the number of parallel connection threads (if 0 use GOMAXPROCS).")
 )
 
 func main() {
@@ -66,6 +42,9 @@ func main() {
 	if *in == "" {
 		flag.Usage()
 		os.Exit(0)
+	}
+	if *threads == 0 {
+		*threads = runtime.GOMAXPROCS(0)
 	}
 
 	f, err := os.Open(*in)
@@ -92,38 +71,8 @@ func main() {
 	}
 	sort.Sort(byMembers(families))
 
-	var edges []edge
-	for i, a := range families[:len(families)-1] {
-		for _, b := range families[i+1:] {
-			upper, lower := intersection(a, b)
-			if upper < *thresh {
-				continue
-			}
-
-			aid, bid := a.id, b.id
-			if a.length > b.length {
-				aid, bid = bid, aid
-			}
-
-			fmt.Fprintln(os.Stderr, aid, bid, upper)
-			edges = append(edges, edge{
-				from:   node{id: aid, members: len(a.members)},
-				to:     node{id: bid, members: len(b.members)},
-				weight: upper,
-			})
-
-			if lower < *thresh {
-				continue
-			}
-
-			fmt.Fprintln(os.Stderr, bid, aid, lower)
-			edges = append(edges, edge{
-				from:   node{id: bid, members: len(b.members)},
-				to:     node{id: aid, members: len(a.members)},
-				weight: lower,
-			})
-		}
-	}
+	c := connector{limit: make(chan struct{}, *threads)}
+	edges := c.edgesFor(families, *thresh)
 
 	if *dotOut != "" {
 		writeDOT(*dotOut, edges)
@@ -230,53 +179,59 @@ func main() {
 	}
 }
 
-func dotted(id []int) string {
-	var buf bytes.Buffer
-	for i, e := range id {
-		if i != 0 {
-			fmt.Fprint(&buf, ".")
-		}
-		fmt.Fprint(&buf, e)
-	}
-	return buf.String()
+type feature struct {
+	Chr    string     `json:"C"`
+	Start  int        `json:"S"`
+	End    int        `json:"E"`
+	Orient seq.Strand `json:"O"`
 }
 
-func writeDOT(file string, edges []edge) {
-	g := concrete.NewDirectedGraph()
-	for _, e := range edges {
-		for _, n := range []graph.Node{e.From(), e.To()} {
-			if !g.NodeExists(n) {
-				g.AddNode(n)
-			}
-		}
-		g.AddDirectedEdge(e, 0)
-	}
-
-	f, err := os.Create(*dotOut)
-	if err != nil {
-		log.Printf("failed to create %q DOT output file: %v", *dotOut, err)
-		return
-	}
-	defer f.Close()
-	b, err := dot.Marshal(g, "", "", "  ", false)
-	if err != nil {
-		log.Printf("failed to create DOT bytes: %v", err)
-		return
-	}
-	_, err = f.Write(b)
-	if err != nil {
-		log.Printf("failed to write DOT: %v", err)
-	}
+type family struct {
+	id      int
+	members []feature
+	length  int
 }
 
-// pair is a [2]bool type satisfying the step.Equaler interface.
-type pair [2]bool
+type byMembers []family
 
-// Equal returns whether p equals e. Equal assumes the underlying type of e is pair.
-func (p pair) Equal(e step.Equaler) bool {
-	return p == e.(pair)
+func (f byMembers) Len() int           { return len(f) }
+func (f byMembers) Less(i, j int) bool { return len(f[i].members) > len(f[j].members) }
+func (f byMembers) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
+
+type node struct {
+	id      int
+	members int
 }
 
+var _ dot.Attributer = node{}
+
+func (n node) ID() int { return n.id }
+func (n node) DOTAttributes() []dot.Attribute {
+	return []dot.Attribute{{"members", fmt.Sprint(n.members)}}
+}
+
+type edge struct {
+	from, to node
+	weight   float64
+}
+
+var _ dot.Attributer = edge{}
+
+func (e edge) From() graph.Node { return e.from }
+func (e edge) To() graph.Node   { return e.to }
+func (e edge) DOTAttributes() []dot.Attribute {
+	return []dot.Attribute{{"weight", fmt.Sprint(e.weight)}}
+}
+
+// stepBool is a bool type satisfying the step.Equaler interface.
+type stepBool bool
+
+// Equal returns whether b equals e. Equal assumes the underlying type of e is a stepBool.
+func (b stepBool) Equal(e step.Equaler) bool {
+	return b == e.(stepBool)
+}
+
+// length returns the number of covered bases in v.
 func length(v []feature) int {
 	vecs := make(map[string]*step.Vector)
 	for _, f := range v {
@@ -301,6 +256,94 @@ func length(v []feature) int {
 		})
 	}
 	return len
+}
+
+// connector handles parallel analysis of family intersections.
+type connector struct {
+	wg sync.WaitGroup
+
+	mu    sync.Mutex
+	edges []edge
+
+	// limit specifies the maximum number
+	// of concurrent intersection calls.
+	limit chan struct{}
+}
+
+// acquire gets an available worker thread.
+func (c *connector) acquire() {
+	c.wg.Add(1)
+	c.limit <- struct{}{}
+}
+
+// release puts pack a worker thread.
+func (c *connector) release() {
+	<-c.limit
+	c.wg.Done()
+}
+
+// connect adds e to the store of edges.
+func (c *connector) connect(e edge) {
+	c.mu.Lock()
+	fmt.Fprintln(os.Stderr, e.from.id, e.to.id, e.weight)
+	c.edges = append(c.edges, e)
+	c.mu.Unlock()
+}
+
+// edgesFor returns the edges that exist between families in f where
+// the intersection is greater than or equal to thresh.
+func (c *connector) edgesFor(f []family, thresh float64) []edge {
+	for i, a := range f[:len(f)-1] {
+		for _, b := range f[i+1:] {
+			a := a
+			b := b
+			c.acquire()
+			go func() {
+				defer c.release()
+				upper, lower := intersection(a, b)
+				if upper < thresh {
+					return
+				}
+
+				// Edges indicate connection from the shorter
+				// family to the longer family, so ensure this
+				// is the state now.
+				if a.length > b.length {
+					a, b = b, a
+				}
+
+				c.connect(edge{
+					from:   node{id: a.id, members: len(a.members)},
+					to:     node{id: b.id, members: len(b.members)},
+					weight: upper,
+				})
+
+				if lower < thresh {
+					return
+				}
+
+				c.connect(edge{
+					from:   node{id: b.id, members: len(b.members)},
+					to:     node{id: a.id, members: len(a.members)},
+					weight: lower,
+				})
+			}()
+		}
+	}
+	c.wg.Wait()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.edges
+}
+
+// pair is a [2]bool type satisfying the step.Equaler interface.
+type pair [2]bool
+
+// Equal returns whether p equals e. Equal assumes the underlying type of e is pair.
+func (p pair) Equal(e step.Equaler) bool {
+	return p == e.(pair)
 }
 
 func intersection(a, b family) (upper, lower float64) {
@@ -355,34 +398,50 @@ func intersection(a, b family) (upper, lower float64) {
 	return upper, lower
 }
 
+func dotted(id []int) string {
+	var buf bytes.Buffer
+	for i, e := range id {
+		if i != 0 {
+			fmt.Fprint(&buf, ".")
+		}
+		fmt.Fprint(&buf, e)
+	}
+	return buf.String()
+}
+
+func writeDOT(file string, edges []edge) {
+	g := concrete.NewDirectedGraph()
+	for _, e := range edges {
+		for _, n := range []graph.Node{e.From(), e.To()} {
+			if !g.NodeExists(n) {
+				g.AddNode(n)
+			}
+		}
+		g.AddDirectedEdge(e, 0)
+	}
+
+	f, err := os.Create(*dotOut)
+	if err != nil {
+		log.Printf("failed to create %q DOT output file: %v", *dotOut, err)
+		return
+	}
+	defer f.Close()
+	b, err := dot.Marshal(g, "", "", "  ", false)
+	if err != nil {
+		log.Printf("failed to create DOT bytes: %v", err)
+		return
+	}
+	_, err = f.Write(b)
+	if err != nil {
+		log.Printf("failed to write DOT: %v", err)
+	}
+}
+
 type group struct {
 	members  []family
 	isClique bool
 	cliques  [][]int
 	pageRank ranks
-}
-
-type node struct {
-	id      int
-	members int
-}
-
-func (n node) ID() int { return n.id }
-func (n node) DOTAttributes() []dot.Attribute {
-	return []dot.Attribute{{"members", fmt.Sprint(n.members)}}
-}
-
-type edge struct {
-	from, to graph.Node
-	weight   float64
-}
-
-var _ dot.Attributer = edge{}
-
-func (e edge) From() graph.Node { return e.from }
-func (e edge) To() graph.Node   { return e.to }
-func (e edge) DOTAttributes() []dot.Attribute {
-	return []dot.Attribute{{"weight", fmt.Sprint(e.weight)}}
 }
 
 func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group {
