@@ -33,6 +33,7 @@ var (
 	in      = flag.String("in", "", "Specifies the input json file name.")
 	dotOut  = flag.String("dot", "", "Specifies the output DOT file name.")
 	thresh  = flag.Float64("thresh", 0.05, "Specifies minimum family intersection to report.")
+	minFam  = flag.Int("min", 0, "Specify the minimum number of members in a family to include (if 0 no limit).")
 	cliques = flag.Bool("cliques", false, "Find cliques in non-clique clusters.")
 	threads = flag.Int("threads", 0, "Specify the number of parallel connection threads (if 0 use GOMAXPROCS).")
 )
@@ -64,6 +65,9 @@ func main() {
 		err = json.Unmarshal(l, &v)
 		if err != nil {
 			log.Fatalf("failed unmarshaling json for family %d: %v", i, err)
+		}
+		if *minFam != 0 && len(v) < *minFam {
+			continue
 		}
 		fam := family{id: i, members: v, length: length(v)}
 
