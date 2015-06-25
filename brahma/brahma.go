@@ -270,7 +270,7 @@ func makeAnnot(target *gff.Feature, m matches, mapping []byte, buf *bytes.Buffer
 		if rec.left != none {
 			fmt.Fprintf(buf, "(%.0f%%|%.0f%%)",
 				// Overlap with masked element.
-				float64(annotation.overlap)/float64(rec.right-rec.left)*100,
+				float64(annotation.overlap)/float64(rec.genomic.Len())*100,
 				// Overlap with complete element.
 				float64(annotation.overlap)/float64(rec.right+rec.remains)*100,
 			)
