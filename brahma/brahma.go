@@ -99,7 +99,7 @@ func main() {
 
 	var id uintptr
 	for {
-		r, err := source.Read()
+		f, err := source.Read()
 		if err != nil {
 			if err != io.EOF {
 				fmt.Fprintf(os.Stderr, "Error: %v", err)
@@ -108,33 +108,33 @@ func main() {
 			break
 		}
 
-		repeat := r.(*gff.Feature)
-		repData := &RepeatRecord{
+		gf := f.(*gff.Feature)
+		repData := &record{
 			id: id,
-			Location: Location{
-				Left:  repeat.FeatStart,
-				Right: repeat.FeatEnd,
-				Loc:   Contig(repeat.SeqName),
+			genomic: repeat{
+				left:  gf.FeatStart,
+				right: gf.FeatEnd,
+				loc:   contig(gf.SeqName),
 			},
 		}
 		id++
 
-		ra := repeat.FeatAttributes.Get("Repeat")
+		ra := gf.FeatAttributes.Get("Repeat")
 		if ra == "" {
-			fmt.Fprintf(os.Stderr, "Missing repeat tag: file probably not an RM gff.\n")
+			fmt.Fprintf(os.Stderr, "missing repeat tag: file probably not an RM gff.\n")
 			os.Exit(1)
 		}
-		repData.Parse(ra)
+		repData.parse(ra)
 
-		if t, ok := ts[repeat.SeqName]; ok {
+		if t, ok := ts[gf.SeqName]; ok {
 			err = t.Insert(repData, true)
 		} else {
 			t = &interval.IntTree{}
 			err = t.Insert(repData, true)
-			ts[repeat.SeqName] = t
+			ts[gf.SeqName] = t
 		}
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Insertion error: %v with repeat: %v\n", err, repeat)
+			fmt.Fprintf(os.Stderr, "insertion error: %v with repeat: %v\n", err, gf)
 		}
 	}
 	for _, t := range ts {
@@ -147,8 +147,8 @@ func main() {
 
 		buffer  = make([]byte, 0, annotationLength)
 		mapping = buffer[1 : mapLen+1]
-		annots  = make(Matches, 0, maxAnnotations+1)
-		o       = Overlap{&annots}
+		annots  = make(matches, 0, maxAnnotations+1)
+		best    = byOverlap{&annots}
 		overlap int
 	)
 	for {
@@ -170,20 +170,22 @@ func main() {
 		if ok {
 			t.DoMatching(func(hit interval.IntInterface) (done bool) {
 				r := hit.Range()
-				heap.Push(o, Match{
-					Repeat:  hit.(*RepeatRecord),
-					Overlap: min(r.End, f.FeatEnd) - max(r.Start, f.FeatStart),
-					Strand:  f.FeatStrand,
+				heap.Push(best, match{
+					record:  hit.(*record),
+					overlap: min(r.End, f.FeatEnd) - max(r.Start, f.FeatStart),
+					strand:  f.FeatStrand,
 				})
 				if len(annots) > maxAnnotations {
-					heap.Pop(o)
+					// byOverlap is a min heap for overlap,
+					// so pop removes the lowest overlap.
+					heap.Pop(best)
 				}
 				return
-			}, RepeatQuery{f.FeatStart, f.FeatEnd, overlap})
+			}, query{f.FeatStart, f.FeatEnd, overlap})
 		}
 
 		if len(annots) > 1 {
-			sort.Sort(Start{annots})
+			sort.Sort(byStart{annots})
 		}
 		if len(annots) > 0 {
 			buffer = makeAnnot(f, annots, mapping, bytes.NewBuffer(buffer))
@@ -199,41 +201,41 @@ func main() {
 	}
 }
 
-func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []byte {
+// makeAnoot return an annotation map
+func makeAnnot(target *gff.Feature, m matches, mapping []byte, buf *bytes.Buffer) []byte {
 	var leftMargin, rightMargin float64
-	scale := mapLen / float64(f.Len())
-	for i, ann := range m {
+	scale := mapLen / float64(target.Len())
+	for i, annotation := range m {
 		var (
-			rep      = ann.Repeat
-			location = rep.Location
-			start    = max(location.Start(), f.FeatStart)
-			end      = min(location.End(), f.FeatEnd)
+			rec   = annotation.record
+			start = max(rec.genomic.Start(), target.FeatStart)
+			end   = min(rec.genomic.End(), target.FeatEnd)
 		)
 
 		var consRemain int
-		if consStart := rep.Left; consStart != none {
-			consEnd := rep.Right
-			consRemain = rep.Remain
+		if consStart := rec.left; consStart != none {
+			consEnd := rec.right
+			consRemain = rec.remains
 			repLen := consStart + consRemain
 			if repLen <= 0 {
 				repLen = util.MaxInt
 			}
 
-			if location.Start() < f.FeatStart {
-				consStart += f.FeatStart - location.Start()
+			if rec.genomic.Start() < target.FeatStart {
+				consStart += target.FeatStart - rec.genomic.Start()
 			}
-			if location.End() > f.FeatEnd {
-				consEnd -= location.End() - f.FeatEnd
+			if rec.genomic.End() > target.FeatEnd {
+				consEnd -= rec.genomic.End() - target.FeatEnd
 			}
 
 			leftMargin = float64(consStart) / float64(repLen)
 			rightMargin = float64(consRemain) / float64(repLen)
 		}
 
-		mapStart := int(float64(start-f.FeatStart)*scale + 0.5)
-		mapEnd := int(float64(end-f.FeatStart)*scale + 0.5)
+		mapStart := int(float64(start-target.FeatStart)*scale + 0.5)
+		mapEnd := int(float64(end-target.FeatStart)*scale + 0.5)
 
-		if f.FeatStrand == seq.Minus {
+		if target.FeatStrand == seq.Minus {
 			mapStart, mapEnd = mapLen-mapEnd, mapLen-mapStart
 		}
 
@@ -246,7 +248,7 @@ func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []b
 			cLower := 'a' + byte(i)
 			cUpper := 'A' + byte(i)
 
-			if leftMargin <= maxMargin && rep.Left != none {
+			if leftMargin <= maxMargin && rec.left != none {
 				mapping[mapStart] = cUpper
 			} else {
 				mapping[mapStart] = cLower
@@ -260,29 +262,29 @@ func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []b
 			}
 
 			if mapEnd-1 != mapStart {
-				if rightMargin <= maxMargin && rep.Left != none {
+				if rightMargin <= maxMargin && rec.left != none {
 					mapping[mapEnd-1] = cUpper
 				} else {
 					mapping[mapEnd-1] = cLower
 				}
-			} else if rightMargin <= maxMargin && rep.Left != none {
+			} else if rightMargin <= maxMargin && rec.left != none {
 				mapping[mapEnd-1] &^= ('a' - 'A') // Uppercase has priority - truncation is indicated by fractional rep information.
 			}
 		}
 
 		buf.WriteByte(' ')
-		buf.WriteString(rep.Name)
+		buf.WriteString(rec.name)
 
-		if rep.Left >= 0 {
+		if rec.left >= 0 {
 			var (
-				full    = float64(rep.Right + consRemain)
-				missing = float64(rep.Left + consRemain)
+				full    = float64(rec.right + consRemain)
+				missing = float64(rec.left + consRemain)
 			)
-			if f.FeatStart > location.Start() {
-				missing += float64(f.FeatStart - location.Start())
+			if target.FeatStart > rec.genomic.Start() {
+				missing += float64(target.FeatStart - rec.genomic.Start())
 			}
-			if location.End() > f.FeatEnd {
-				missing += float64(location.End() - f.FeatEnd)
+			if rec.genomic.End() > target.FeatEnd {
+				missing += float64(rec.genomic.End() - target.FeatEnd)
 			}
 			fmt.Fprintf(buf, "(%.0f%%)", ((full-missing)*100)/full)
 		}
@@ -291,113 +293,136 @@ func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []b
 	return buf.Bytes()
 }
 
-type Contig string
+// contig is a sequence contig with repeats mapped to it.
+type contig string
 
-func (c Contig) Start() int             { return 0 }
-func (c Contig) End() int               { return 0 }
-func (c Contig) Len() int               { return 0 }
-func (c Contig) Name() string           { return string(c) }
-func (c Contig) Description() string    { return "Contig" }
-func (c Contig) Location() feat.Feature { return nil }
+func (c contig) Start() int             { return 0 }
+func (c contig) End() int               { return 0 }
+func (c contig) Len() int               { return 0 }
+func (c contig) Name() string           { return string(c) }
+func (c contig) Description() string    { return "contig" }
+func (c contig) Location() feat.Feature { return nil }
 
-type Location struct {
-	Left, Right int
-	Loc         feat.Feature
+// repeat is a repeat-matching interval.
+type repeat struct {
+	left, right int
+	loc         feat.Feature
 }
 
-func (l Location) Start() int             { return l.Left }
-func (l Location) End() int               { return l.Right }
-func (l Location) Len() int               { return l.Right - l.Left }
-func (l Location) Name() string           { return fmt.Sprintf("%s:[%d,%d)", l.Loc.Name(), l.Left, l.Right) }
-func (l Location) Description() string    { return "Repeat" }
-func (l Location) Location() feat.Feature { return l.Loc }
+func (r repeat) Start() int             { return r.left }
+func (r repeat) End() int               { return r.right }
+func (r repeat) Len() int               { return r.right - r.left }
+func (r repeat) Name() string           { return fmt.Sprintf("%s:[%d,%d)", r.loc.Name(), r.left, r.right) }
+func (r repeat) Description() string    { return "repeat" }
+func (r repeat) Location() feat.Feature { return r.loc }
 
-type RepeatRecord struct {
+// record is a masked repeat record.
+type record struct {
 	id uintptr
 
-	Location
+	// genomic is the genomic region matched
+	// to the the repeat identified below.
+	genomic repeat
 
-	Name, Class string
-	Left, Right int
-	Remain      int
+	// name and class that the repeat type
+	// and class defined by the masker.
+	name, class string
+
+	// left and right are the left and right
+	// position of the record alignment in
+	// consensus-relative coordinates.
+	left, right int
+	// remains is the distance from right to
+	// the end of the consensus sequence.
+	remains int
 }
 
-func (rr *RepeatRecord) Overlap(b interval.IntRange) bool {
-	return rr.Location.Right > b.Start && rr.Location.Left < b.End
+func (r *record) Overlap(b interval.IntRange) bool {
+	return r.genomic.End() > b.Start && r.genomic.Start() < b.End
 }
-func (rr *RepeatRecord) ID() uintptr { return rr.id }
-func (rr *RepeatRecord) Range() interval.IntRange {
-	return interval.IntRange{rr.Location.Left, rr.Location.Right}
+func (r *record) ID() uintptr { return r.id }
+func (r *record) Range() interval.IntRange {
+	return interval.IntRange{r.genomic.Start(), r.genomic.End()}
 }
 
 const none = -1
 
-func (rr *RepeatRecord) Parse(a string) {
+func (r *record) parse(a string) {
 	fields := strings.Split(a, " ")
 
-	rr.Name = fields[0]
-	rr.Class = fields[1]
+	r.name = fields[0]
+	r.class = fields[1]
 	if fields[2] != "." {
-		rr.Left, _ = strconv.Atoi(fields[2])
+		r.left, _ = strconv.Atoi(fields[2])
 	} else {
-		rr.Left = none
+		r.left = none
 	}
 	if fields[3] != "." {
-		rr.Right, _ = strconv.Atoi(fields[3])
+		r.right, _ = strconv.Atoi(fields[3])
 	} else {
-		rr.Right = none
+		r.right = none
 	}
 	if fields[4] != "." {
-		rr.Remain, _ = strconv.Atoi(fields[4])
+		r.remains, _ = strconv.Atoi(fields[4])
 	} else {
-		rr.Remain = none
+		r.remains = none
 	}
 }
 
-type RepeatQuery struct {
+// query is an interval query allowing for an overlap threshold.
+type query struct {
 	left, right int
 	overlap     int
 }
 
-func (rq RepeatQuery) Overlap(b interval.IntRange) bool {
-	return rq.right > b.Start+rq.overlap && rq.left < b.End-rq.overlap
+func (q query) Overlap(b interval.IntRange) bool {
+	return q.right > b.Start+q.overlap && q.left < b.End-q.overlap
 }
 
-type Match struct {
-	Repeat  *RepeatRecord
-	Overlap int
-	Strand  seq.Strand
+// match is a repeat match to a target interval.
+type match struct {
+	// record is the matching repeat record.
+	record *record
+
+	// overlap is the overlap between the
+	// target and the record.
+	overlap int
+
+	// strand is the strand of the target.
+	strand seq.Strand
 }
 
-type Matches []Match
+type matches []match
 
-func (m Matches) Len() int {
+func (m matches) Len() int {
 	return len(m)
 }
-func (m Matches) Swap(i, j int) {
+func (m matches) Swap(i, j int) {
 	m[i], m[j] = m[j], m[i]
 }
 
-type Overlap struct{ *Matches }
+// byOverlap is a min heap of matches by overlap.
+type byOverlap struct{ *matches }
 
-func (o Overlap) Less(i, j int) bool {
-	return (*o.Matches)[i].Overlap < (*o.Matches)[j].Overlap
+func (o byOverlap) Less(i, j int) bool {
+	return (*o.matches)[i].overlap < (*o.matches)[j].overlap
 }
-func (o Overlap) Pop() interface{} {
-	*o.Matches = (*o.Matches)[:len(*o.Matches)-1]
+func (o byOverlap) Pop() interface{} {
+	*o.matches = (*o.matches)[:len(*o.matches)-1]
 	return nil
 }
-func (o Overlap) Push(x interface{}) {
-	*o.Matches = append(*o.Matches, x.(Match))
+func (o byOverlap) Push(x interface{}) {
+	*o.matches = append(*o.matches, x.(match))
 }
 
-type Start struct{ Matches }
+// byStart implements the sort.Interface, sorting by start position.
+type byStart struct{ matches }
 
-func (s Start) Less(i, j int) bool {
-	if s.Matches[i].Strand == seq.Plus {
-		return s.Matches[i].Repeat.Start() < s.Matches[j].Repeat.Start()
+func (s byStart) Less(i, j int) bool {
+	if s.matches[i].strand == seq.Plus {
+		return s.matches[i].record.genomic.Start() < s.matches[j].record.genomic.Start()
 	}
-	return s.Matches[i].Repeat.Start() > s.Matches[j].Repeat.Start()
+	return s.matches[i].record.genomic.Start() > s.matches[j].record.genomic.Start()
 }
 
 func min(a, b int) int {
