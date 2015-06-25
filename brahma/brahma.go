@@ -39,115 +39,6 @@ var (
 
 type trees map[string]*interval.IntTree
 
-type Contig string
-
-func (c Contig) Start() int             { return 0 }
-func (c Contig) End() int               { return 0 }
-func (c Contig) Len() int               { return 0 }
-func (c Contig) Name() string           { return string(c) }
-func (c Contig) Description() string    { return "Contig" }
-func (c Contig) Location() feat.Feature { return nil }
-
-type Location struct {
-	Left, Right int
-	Loc         feat.Feature
-}
-
-func (l Location) Start() int             { return l.Left }
-func (l Location) End() int               { return l.Right }
-func (l Location) Len() int               { return l.Right - l.Left }
-func (l Location) Name() string           { return fmt.Sprintf("%s:[%d,%d)", l.Loc.Name(), l.Left, l.Right) }
-func (l Location) Description() string    { return "Repeat" }
-func (l Location) Location() feat.Feature { return l.Loc }
-
-type RepeatRecord struct {
-	id uintptr
-
-	Location
-
-	Name, Class string
-	Left, Right int
-	Remain      int
-}
-
-func (rr *RepeatRecord) Overlap(b interval.IntRange) bool {
-	return rr.Location.Right > b.Start && rr.Location.Left < b.End
-}
-func (rr *RepeatRecord) ID() uintptr { return rr.id }
-func (rr *RepeatRecord) Range() interval.IntRange {
-	return interval.IntRange{rr.Location.Left, rr.Location.Right}
-}
-
-const none = -1
-
-func (rr *RepeatRecord) Parse(a string) {
-	fields := strings.Split(a, " ")
-
-	rr.Name = fields[0]
-	rr.Class = fields[1]
-	if fields[2] != "." {
-		rr.Left, _ = strconv.Atoi(fields[2])
-	} else {
-		rr.Left = none
-	}
-	if fields[3] != "." {
-		rr.Right, _ = strconv.Atoi(fields[3])
-	} else {
-		rr.Right = none
-	}
-	if fields[4] != "." {
-		rr.Remain, _ = strconv.Atoi(fields[4])
-	} else {
-		rr.Remain = none
-	}
-}
-
-type RepeatQuery struct {
-	left, right int
-	overlap     int
-}
-
-func (rq RepeatQuery) Overlap(b interval.IntRange) bool {
-	return rq.right > b.Start+rq.overlap && rq.left < b.End-rq.overlap
-}
-
-type Match struct {
-	Repeat  *RepeatRecord
-	Overlap int
-	Strand  seq.Strand
-}
-
-type Matches []Match
-
-func (m Matches) Len() int {
-	return len(m)
-}
-func (m Matches) Swap(i, j int) {
-	m[i], m[j] = m[j], m[i]
-}
-
-type Overlap struct{ *Matches }
-
-func (o Overlap) Less(i, j int) bool {
-	return (*o.Matches)[i].Overlap < (*o.Matches)[j].Overlap
-}
-func (o Overlap) Pop() interface{} {
-	*o.Matches = (*o.Matches)[:len(*o.Matches)-1]
-	return nil
-}
-func (o Overlap) Push(x interface{}) {
-	*o.Matches = append(*o.Matches, x.(Match))
-}
-
-type Start struct{ Matches }
-
-func (s Start) Less(i, j int) bool {
-	if s.Matches[i].Strand == 1 {
-		return s.Matches[i].Repeat.Start() < s.Matches[j].Repeat.Start()
-	}
-	return s.Matches[i].Repeat.Start() > s.Matches[j].Repeat.Start()
-}
-
 func main() {
 	var (
 		target *gff.Reader
@@ -252,7 +143,7 @@ func main() {
 
 	const tag = "Annot"
 	var (
-		blank = []byte(blankTemplate)
+		blank = `"` + strings.Repeat("-", mapLen)
 
 		buffer  = make([]byte, 0, annotationLength)
 		mapping = buffer[1 : mapLen+1]
@@ -307,22 +198,6 @@ func main() {
 		out.Write(f)
 	}
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-var blankTemplate = `"` + strings.Repeat("-", mapLen)
 
 func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []byte {
 	var leftMargin, rightMargin float64
@@ -414,4 +289,127 @@ func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []b
 	}
 
 	return buf.Bytes()
+}
+
+type Contig string
+
+func (c Contig) Start() int             { return 0 }
+func (c Contig) End() int               { return 0 }
+func (c Contig) Len() int               { return 0 }
+func (c Contig) Name() string           { return string(c) }
+func (c Contig) Description() string    { return "Contig" }
+func (c Contig) Location() feat.Feature { return nil }
+
+type Location struct {
+	Left, Right int
+	Loc         feat.Feature
+}
+
+func (l Location) Start() int             { return l.Left }
+func (l Location) End() int               { return l.Right }
+func (l Location) Len() int               { return l.Right - l.Left }
+func (l Location) Name() string           { return fmt.Sprintf("%s:[%d,%d)", l.Loc.Name(), l.Left, l.Right) }
+func (l Location) Description() string    { return "Repeat" }
+func (l Location) Location() feat.Feature { return l.Loc }
+
+type RepeatRecord struct {
+	id uintptr
+
+	Location
+
+	Name, Class string
+	Left, Right int
+	Remain      int
+}
+
+func (rr *RepeatRecord) Overlap(b interval.IntRange) bool {
+	return rr.Location.Right > b.Start && rr.Location.Left < b.End
+}
+func (rr *RepeatRecord) ID() uintptr { return rr.id }
+func (rr *RepeatRecord) Range() interval.IntRange {
+	return interval.IntRange{rr.Location.Left, rr.Location.Right}
+}
+
+const none = -1
+
+func (rr *RepeatRecord) Parse(a string) {
+	fields := strings.Split(a, " ")
+
+	rr.Name = fields[0]
+	rr.Class = fields[1]
+	if fields[2] != "." {
+		rr.Left, _ = strconv.Atoi(fields[2])
+	} else {
+		rr.Left = none
+	}
+	if fields[3] != "." {
+		rr.Right, _ = strconv.Atoi(fields[3])
+	} else {
+		rr.Right = none
+	}
+	if fields[4] != "." {
+		rr.Remain, _ = strconv.Atoi(fields[4])
+	} else {
+		rr.Remain = none
+	}
+}
+
+type RepeatQuery struct {
+	left, right int
+	overlap     int
+}
+
+func (rq RepeatQuery) Overlap(b interval.IntRange) bool {
+	return rq.right > b.Start+rq.overlap && rq.left < b.End-rq.overlap
+}
+
+type Match struct {
+	Repeat  *RepeatRecord
+	Overlap int
+	Strand  seq.Strand
+}
+
+type Matches []Match
+
+func (m Matches) Len() int {
+	return len(m)
+}
+func (m Matches) Swap(i, j int) {
+	m[i], m[j] = m[j], m[i]
+}
+
+type Overlap struct{ *Matches }
+
+func (o Overlap) Less(i, j int) bool {
+	return (*o.Matches)[i].Overlap < (*o.Matches)[j].Overlap
+}
+func (o Overlap) Pop() interface{} {
+	*o.Matches = (*o.Matches)[:len(*o.Matches)-1]
+	return nil
+}
+func (o Overlap) Push(x interface{}) {
+	*o.Matches = append(*o.Matches, x.(Match))
+}
+
+type Start struct{ Matches }
+
+func (s Start) Less(i, j int) bool {
+	if s.Matches[i].Strand == seq.Plus {
+		return s.Matches[i].Repeat.Start() < s.Matches[j].Repeat.Start()
+	}
+	return s.Matches[i].Repeat.Start() > s.Matches[j].Repeat.Start()
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
