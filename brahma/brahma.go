@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unsafe"
 
 	"github.com/biogo/biogo/feat"
 	"github.com/biogo/biogo/io/featio/gff"
@@ -62,6 +61,8 @@ func (l Location) Description() string    { return "Repeat" }
 func (l Location) Location() feat.Feature { return l.Loc }
 
 type RepeatRecord struct {
+	id uintptr
+
 	Location
 
 	Name, Class string
@@ -72,10 +73,12 @@ type RepeatRecord struct {
 func (rr *RepeatRecord) Overlap(b interval.IntRange) bool {
 	return rr.Location.Right > b.Start && rr.Location.Left < b.End
 }
-func (rr *RepeatRecord) ID() uintptr { return uintptr(unsafe.Pointer(rr)) }
+func (rr *RepeatRecord) ID() uintptr { return rr.id }
 func (rr *RepeatRecord) Range() interval.IntRange {
 	return interval.IntRange{rr.Location.Left, rr.Location.Right}
 }
+
+const none = -1
 
 func (rr *RepeatRecord) Parse(a string) {
 	fields := strings.Split(a, " ")
@@ -85,17 +88,17 @@ func (rr *RepeatRecord) Parse(a string) {
 	if fields[2] != "." {
 		rr.Left, _ = strconv.Atoi(fields[2])
 	} else {
-		rr.Left = -1
+		rr.Left = none
 	}
 	if fields[3] != "." {
 		rr.Right, _ = strconv.Atoi(fields[3])
 	} else {
-		rr.Right = -1
+		rr.Right = none
 	}
 	if fields[4] != "." {
 		rr.Remain, _ = strconv.Atoi(fields[4])
 	} else {
-		rr.Remain = -1
+		rr.Remain = none
 	}
 }
 
@@ -203,6 +206,7 @@ func main() {
 
 	ts := make(trees)
 
+	var id uintptr
 	for {
 		r, err := source.Read()
 		if err != nil {
@@ -212,14 +216,18 @@ func main() {
 			}
 			break
 		}
+
 		repeat := r.(*gff.Feature)
 		repData := &RepeatRecord{
+			id: id,
 			Location: Location{
 				Left:  repeat.FeatStart,
 				Right: repeat.FeatEnd,
 				Loc:   Contig(repeat.SeqName),
 			},
 		}
+		id++
+
 		ra := repeat.FeatAttributes.Get("Repeat")
 		if ra == "" {
 			fmt.Fprintf(os.Stderr, "Missing repeat tag: file probably not an RM gff.\n")
@@ -318,7 +326,7 @@ var blankTemplate = `"` + strings.Repeat("-", mapLen)
 
 func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []byte {
 	var leftMargin, rightMargin float64
-	scale := float64(mapLen) / float64(f.Len())
+	scale := mapLen / float64(f.Len())
 	for i, ann := range m {
 		var (
 			rep      = ann.Repeat
@@ -327,8 +335,8 @@ func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []b
 			end      = min(location.End(), f.FeatEnd)
 		)
 
-		var consRemain = 0
-		if consStart := rep.Left; consStart != -1 {
+		var consRemain int
+		if consStart := rep.Left; consStart != none {
 			consEnd := rep.Right
 			consRemain = rep.Remain
 			repLen := consStart + consRemain
@@ -350,7 +358,7 @@ func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []b
 		mapStart := int(float64(start-f.FeatStart)*scale + 0.5)
 		mapEnd := int(float64(end-f.FeatStart)*scale + 0.5)
 
-		if f.FeatStrand == -1 {
+		if f.FeatStrand == seq.Minus {
 			mapStart, mapEnd = mapLen-mapEnd, mapLen-mapStart
 		}
 
@@ -363,7 +371,7 @@ func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []b
 			cLower := 'a' + byte(i)
 			cUpper := 'A' + byte(i)
 
-			if leftMargin <= maxMargin && rep.Left != -1 {
+			if leftMargin <= maxMargin && rep.Left != none {
 				mapping[mapStart] = cUpper
 			} else {
 				mapping[mapStart] = cLower
@@ -377,12 +385,12 @@ func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []b
 			}
 
 			if mapEnd-1 != mapStart {
-				if rightMargin <= maxMargin && rep.Left != -1 {
+				if rightMargin <= maxMargin && rep.Left != none {
 					mapping[mapEnd-1] = cUpper
 				} else {
 					mapping[mapEnd-1] = cLower
 				}
-			} else if rightMargin <= maxMargin && rep.Left != -1 {
+			} else if rightMargin <= maxMargin && rep.Left != none {
 				mapping[mapEnd-1] &^= ('a' - 'A') // Uppercase has priority - truncation is indicated by fractional rep information.
 			}
 		}
