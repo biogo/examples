@@ -22,7 +22,6 @@ import (
 	"github.com/biogo/biogo/feat"
 	"github.com/biogo/biogo/io/featio/gff"
 	"github.com/biogo/biogo/seq"
-	"github.com/biogo/biogo/util"
 	"github.com/biogo/store/interval"
 )
 
@@ -212,24 +211,16 @@ func makeAnnot(target *gff.Feature, m matches, mapping []byte, buf *bytes.Buffer
 			end   = min(rec.genomic.End(), target.FeatEnd)
 		)
 
+		// Handle defined length repeat margins.
 		var consRemain int
-		if consStart := rec.left; consStart != none {
-			consEnd := rec.right
+		if rec.left != none {
+			consStart := rec.left + max(0, target.FeatStart-rec.genomic.Start())
+			consEnd := rec.right + min(0, target.FeatEnd-rec.genomic.End())
 			consRemain = rec.remains
-			repLen := consStart + consRemain
-			if repLen <= 0 {
-				repLen = util.MaxInt
-			}
+			length := consEnd + consRemain
 
-			if rec.genomic.Start() < target.FeatStart {
-				consStart += target.FeatStart - rec.genomic.Start()
-			}
-			if rec.genomic.End() > target.FeatEnd {
-				consEnd -= rec.genomic.End() - target.FeatEnd
-			}
-
-			leftMargin = float64(consStart) / float64(repLen)
-			rightMargin = float64(consRemain) / float64(repLen)
+			leftMargin = float64(consStart) / float64(length)
+			rightMargin = float64(consEnd) / float64(length)
 		}
 
 		mapStart := int(float64(start-target.FeatStart)*scale + 0.5)
@@ -240,8 +231,7 @@ func makeAnnot(target *gff.Feature, m matches, mapping []byte, buf *bytes.Buffer
 		}
 
 		if mapStart < 0 || mapStart > mapLen || mapEnd < 0 || mapEnd > mapLen {
-			panic(fmt.Sprintf("brahma: failed to map: mapStart: %d, mapEnd: %d, mapLen: %d\n",
-				mapStart, mapEnd, mapLen))
+			panic(fmt.Sprintf("brahma: failed to map: mapStart: %d, mapEnd: %d, mapLen: %d\n", mapStart, mapEnd, mapLen))
 		}
 
 		if mapStart < mapEnd {
@@ -268,25 +258,22 @@ func makeAnnot(target *gff.Feature, m matches, mapping []byte, buf *bytes.Buffer
 					mapping[mapEnd-1] = cLower
 				}
 			} else if rightMargin <= maxMargin && rec.left != none {
-				mapping[mapEnd-1] &^= ('a' - 'A') // Uppercase has priority - truncation is indicated by fractional rep information.
+				// Uppercase has priority - truncation is
+				// indicated by fractional rep information.
+				mapping[mapEnd-1] &^= ('a' - 'A')
 			}
 		}
 
 		buf.WriteByte(' ')
 		buf.WriteString(rec.name)
 
-		if rec.left >= 0 {
-			var (
-				full    = float64(rec.right + consRemain)
-				missing = float64(rec.left + consRemain)
+		if rec.left != none {
+			fmt.Fprintf(buf, "(%.0f%%|%.0f%%)",
+				// Overlap with masked element.
+				float64(annotation.overlap)/float64(rec.right-rec.left)*100,
+				// Overlap with complete element.
+				float64(annotation.overlap)/float64(rec.right+rec.remains)*100,
 			)
-			if target.FeatStart > rec.genomic.Start() {
-				missing += float64(target.FeatStart - rec.genomic.Start())
-			}
-			if rec.genomic.End() > target.FeatEnd {
-				missing += float64(rec.genomic.End() - target.FeatEnd)
-			}
-			fmt.Fprintf(buf, "(%.0f%%)", ((full-missing)*100)/full)
 		}
 	}
 
@@ -354,6 +341,7 @@ func (r *record) parse(a string) {
 	r.class = fields[1]
 	if fields[2] != "." {
 		r.left, _ = strconv.Atoi(fields[2])
+		r.left-- // Convert to 0-based indexing.
 	} else {
 		r.left = none
 	}
