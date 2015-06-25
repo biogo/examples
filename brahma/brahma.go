@@ -60,37 +60,35 @@ func main() {
 	}
 
 	if *targetName == "" {
-		fmt.Fprintln(os.Stderr, "Reading PALS features from stdin.")
+		fmt.Fprintln(os.Stderr, "reading PALS features from stdin.")
 		target = gff.NewReader(os.Stdin)
 	} else if tf, err := os.Open(*targetName); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
-		os.Exit(1)
+		log.Fatalf("could not open %q: %v", *targetName, err)
 	} else {
-		fmt.Fprintf(os.Stderr, "Reading target features from `%s'.\n", *targetName)
+		fmt.Fprintf(os.Stderr, "reading target features from %q.\n", *targetName)
 		defer tf.Close()
 		target = gff.NewReader(tf)
 	}
 
 	sf, err := os.Open(*sourceName)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.\n", err)
-		os.Exit(1)
+		log.Fatalf("could not open %q: %v", *sourceName, err)
 	}
-	fmt.Fprintf(os.Stderr, "Reading annotation features from `%s'.\n", *sourceName)
+	fmt.Fprintf(os.Stderr, "reading annotation features from %q.\n", *sourceName)
 	defer sf.Close()
 	source = gff.NewReader(sf)
 
 	if *outName == "" {
-		fmt.Fprintln(os.Stderr, "Writing annotation to stdout.")
+		fmt.Fprintln(os.Stderr, "writing annotation to stdout.")
 		out = gff.NewWriter(os.Stdout, 60, false)
 	} else if of, err := os.Create(*outName); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		log.Fatalf("could not create %q: %v", err)
 	} else {
 		defer of.Close()
 		buf := bufio.NewWriter(of)
 		defer buf.Flush()
 		out = gff.NewWriter(buf, 60, true)
-		fmt.Fprintf(os.Stderr, "Writing annotation to `%s'.\n", *outName)
+		fmt.Fprintf(os.Stderr, "writing annotation to %q.\n", *outName)
 	}
 	out.Precision = 2
 
@@ -101,8 +99,7 @@ func main() {
 		f, err := source.Read()
 		if err != nil {
 			if err != io.EOF {
-				fmt.Fprintf(os.Stderr, "Error: %v", err)
-				os.Exit(1)
+				log.Fatalf("failed to read source feature: %v", err)
 			}
 			break
 		}
@@ -120,10 +117,12 @@ func main() {
 
 		ra := gf.FeatAttributes.Get("Repeat")
 		if ra == "" {
-			fmt.Fprintf(os.Stderr, "missing repeat tag: file probably not an RM gff.\n")
-			os.Exit(1)
+			log.Fatal("missing repeat tag: file probably not an RM gff.")
 		}
-		repData.parse(ra)
+		err = repData.parse(ra)
+		if err != nil {
+			log.Fatalf("failed to parse repeat tag: %v\n", err)
+		}
 
 		if t, ok := ts[gf.SeqName]; ok {
 			err = t.Insert(repData, true)
@@ -133,7 +132,7 @@ func main() {
 			ts[gf.SeqName] = t
 		}
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "insertion error: %v with repeat: %v\n", err, gf)
+			log.Fatalf("insertion error: %v with repeat: %v\n", err, gf)
 		}
 	}
 	for _, t := range ts {
@@ -154,7 +153,7 @@ func main() {
 		rf, err := target.Read()
 		if err != nil {
 			if err != io.EOF {
-				log.Fatalf("failed to read feature: %v", err)
+				log.Fatalf("failed to read target feature: %v", err)
 			}
 			break
 		}
@@ -231,7 +230,7 @@ func makeAnnot(target *gff.Feature, m matches, mapping []byte, buf *bytes.Buffer
 		}
 
 		if mapStart < 0 || mapStart > mapLen || mapEnd < 0 || mapEnd > mapLen {
-			panic(fmt.Sprintf("brahma: failed to map: mapStart: %d, mapEnd: %d, mapLen: %d\n", mapStart, mapEnd, mapLen))
+			log.Fatalf("failed to map: mapStart: %d, mapEnd: %d, mapLen: %d\n", mapStart, mapEnd, mapLen)
 		}
 
 		if mapStart < mapEnd {
@@ -334,27 +333,39 @@ func (r *record) Range() interval.IntRange {
 
 const none = -1
 
-func (r *record) parse(a string) {
+func (r *record) parse(a string) error {
 	fields := strings.Split(a, " ")
 
 	r.name = fields[0]
 	r.class = fields[1]
+	var err error
 	if fields[2] != "." {
-		r.left, _ = strconv.Atoi(fields[2])
+		r.left, err = strconv.Atoi(fields[2])
+		if err != nil {
+			return err
+		}
 		r.left-- // Convert to 0-based indexing.
 	} else {
 		r.left = none
 	}
 	if fields[3] != "." {
-		r.right, _ = strconv.Atoi(fields[3])
+		r.right, err = strconv.Atoi(fields[3])
+		if err != nil {
+			return err
+		}
 	} else {
 		r.right = none
 	}
 	if fields[4] != "." {
-		r.remains, _ = strconv.Atoi(fields[4])
+		r.remains, err = strconv.Atoi(fields[4])
+		if err != nil {
+			return err
+		}
 	} else {
 		r.remains = none
 	}
+
+	return nil
 }
 
 // query is an interval query allowing for an overlap threshold.
