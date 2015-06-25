@@ -13,12 +13,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"unsafe"
 
 	"github.com/biogo/biogo/feat"
@@ -158,13 +157,9 @@ func main() {
 	sourceName := flag.String("source", "", "Filename for source annotation.")
 	outName := flag.String("out", "", "Filename for output. Defaults to stdout.")
 	flag.Float64Var(&minOverlap, "overlap", 0.05, "Overlap between features.")
-	threads := flag.Int("threads", 2, "Number of threads to use.")
-	bufferLen := flag.Int("buffer", 10, "Length of ouput buffer.")
 	help := flag.Bool("help", false, "Print this usage message.")
 
 	flag.Parse()
-
-	runtime.GOMAXPROCS(*threads)
 
 	if *help || *sourceName == "" {
 		flag.Usage()
@@ -247,61 +242,6 @@ func main() {
 		t.AdjustRanges()
 	}
 
-	process := make(chan *gff.Feature)
-	buffer := make(chan *gff.Feature, *bufferLen)
-	processWg := &sync.WaitGroup{}
-	outputWg := &sync.WaitGroup{}
-
-	if *threads < 2 {
-		*threads = 2
-	}
-	for i := 0; i < *threads-1; i++ {
-		processWg.Add(1)
-		go processServer(ts, process, buffer, processWg)
-	}
-
-	//output server
-	outputWg.Add(1)
-	go func() {
-		defer outputWg.Done()
-		for feature := range buffer {
-			out.Write(feature)
-		}
-	}()
-
-	for {
-		feature, err := target.Read()
-		if err == nil {
-			process <- feature.(*gff.Feature)
-		} else {
-			close(process)
-			break
-		}
-	}
-
-	processWg.Wait()
-	close(buffer)
-	outputWg.Wait()
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-var blankTemplate = `"` + strings.Repeat("-", mapLen)
-
-func processServer(index trees, queue, output chan *gff.Feature, wg *sync.WaitGroup) {
-	defer wg.Done()
 	const tag = "Annot"
 	var (
 		blank = []byte(blankTemplate)
@@ -312,14 +252,22 @@ func processServer(index trees, queue, output chan *gff.Feature, wg *sync.WaitGr
 		o       = Overlap{&annots}
 		overlap int
 	)
+	for {
+		rf, err := target.Read()
+		if err != nil {
+			if err != io.EOF {
+				log.Fatalf("failed to read feature: %v", err)
+			}
+			break
+		}
+		f := rf.(*gff.Feature)
 
-	for f := range queue {
 		overlap = int(float64(f.Len()) * minOverlap)
 		annots = annots[:0] // Obviates heap initialisation.
 		buffer = buffer[:len(blank)]
 		copy(buffer, blank)
 
-		t, ok := index[f.SeqName]
+		t, ok := ts[f.SeqName]
 		if ok {
 			t.DoMatching(func(hit interval.IntInterface) (done bool) {
 				r := hit.Range()
@@ -348,9 +296,25 @@ func processServer(index trees, queue, output chan *gff.Feature, wg *sync.WaitGr
 			Value: string(buffer),
 		})
 
-		output <- f
+		out.Write(f)
 	}
 }
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+var blankTemplate = `"` + strings.Repeat("-", mapLen)
 
 func makeAnnot(f *gff.Feature, m Matches, mapping []byte, buf *bytes.Buffer) []byte {
 	var leftMargin, rightMargin float64
