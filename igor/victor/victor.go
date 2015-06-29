@@ -26,7 +26,7 @@ import (
 	"github.com/gonum/graph/concrete"
 	"github.com/gonum/graph/encoding/dot"
 	"github.com/gonum/graph/network"
-	"github.com/gonum/graph/search"
+	"github.com/gonum/graph/topo"
 )
 
 var (
@@ -417,11 +417,11 @@ func writeDOT(file string, edges []edge) {
 	g := concrete.NewDirectedGraph()
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
-			if !g.NodeExists(n) {
+			if !g.Has(n) {
 				g.AddNode(n)
 			}
 		}
-		g.AddDirectedEdge(e, 0)
+		g.SetEdge(e, 0)
 	}
 
 	f, err := os.Create(*dotOut)
@@ -452,11 +452,11 @@ func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group
 	g := concrete.NewGraph()
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
-			if !g.NodeExists(n) {
+			if !g.Has(n) {
 				g.AddNode(n)
 			}
 		}
-		g.AddUndirectedEdge(e, 0)
+		g.SetEdge(e, 0)
 	}
 
 	ltable := make(map[int]int, len(fams))
@@ -464,7 +464,7 @@ func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group
 		ltable[f.id] = i
 	}
 	var grps []group
-	cc := search.ConnectedComponents(g)
+	cc := topo.ConnectedComponents(g)
 	for _, c := range cc {
 		var grp group
 		for _, n := range c {
@@ -488,7 +488,7 @@ func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group
 func edgesIn(g graph.Graph, n []graph.Node) int {
 	e := make(map[[2]int]struct{})
 	for _, u := range n {
-		for _, v := range g.Neighbors(u) {
+		for _, v := range g.From(u) {
 			if u.ID() < v.ID() {
 				e[[2]int{u.ID(), v.ID()}] = struct{}{}
 			}
@@ -513,14 +513,14 @@ outer:
 			}
 		}
 		for _, n := range []graph.Node{e.From(), e.To()} {
-			if !g.NodeExists(n) {
+			if !g.Has(n) {
 				g.AddNode(n)
 			}
 		}
-		g.AddUndirectedEdge(e, 0)
+		g.SetEdge(e, 0)
 	}
 
-	clqs := search.BronKerbosch(g)
+	clqs := topo.BronKerbosch(g)
 	var cliqueIDs [][]int
 	for _, clq := range clqs {
 		if len(clq) < min {
@@ -552,11 +552,11 @@ outer:
 			}
 		}
 		for _, n := range []graph.Node{e.From(), e.To()} {
-			if !g.NodeExists(n) {
+			if !g.Has(n) {
 				g.AddNode(n)
 			}
 		}
-		g.AddDirectedEdge(e, 0)
+		g.SetEdge(e, 0)
 	}
 
 	r := network.PageRank(g, 0.85, 1e-6)
