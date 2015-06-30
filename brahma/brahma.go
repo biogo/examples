@@ -18,11 +18,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/biogo/biogo/feat"
 	"github.com/biogo/biogo/io/featio/gff"
 	"github.com/biogo/biogo/seq"
 	"github.com/biogo/store/interval"
+	"github.com/biogo/store/step"
 )
 
 const (
@@ -50,6 +52,7 @@ func main() {
 	sourceName := flag.String("source", "", "Filename for source annotation.")
 	outName := flag.String("out", "", "Filename for output. Defaults to stdout.")
 	flag.Float64Var(&minOverlap, "overlap", 0.05, "Overlap between features.")
+	covRep := flag.String("covrep", "", "Filename for repeat type coverage report.")
 	help := flag.Bool("help", false, "Print this usage message.")
 
 	flag.Parse()
@@ -139,6 +142,11 @@ func main() {
 		t.AdjustRanges()
 	}
 
+	var coverage map[string][2]*step.Vector
+	if *covRep != "" {
+		coverage = make(map[string][2]*step.Vector)
+	}
+
 	const tag = "Annot"
 	var (
 		blank = `"` + strings.Repeat("-", mapLen)
@@ -185,6 +193,33 @@ func main() {
 		if len(annots) > 1 {
 			sort.Sort(byStart{annots})
 		}
+		if *covRep != "" {
+			for _, a := range annots {
+				if a.record.left == none {
+					continue
+				}
+				v, ok := coverage[a.record.name]
+				if !ok {
+					for i := range v {
+						v[i], err = step.New(0, a.record.right+a.record.remains, stepBool(false))
+						if err != nil {
+							panic(err)
+						}
+						v[i].Relaxed = true // This should not be required, but RepeatMasker.
+					}
+					coverage[a.record.name] = v
+				}
+
+				// krishna coverage.
+				left := a.record.left + max(0, f.FeatStart-a.record.genomic.Start())
+				right := a.record.right + min(0, f.FeatEnd-a.record.genomic.End())
+				if right < left { // This craziness is... because RepeatMasker.
+					continue
+				}
+				v[1].SetRange(left, right, stepBool(true))
+			}
+		}
+
 		if len(annots) > 0 {
 			buffer = makeAnnot(f, annots, mapping, bytes.NewBuffer(buffer))
 		}
@@ -197,6 +232,34 @@ func main() {
 
 		out.Write(f)
 	}
+
+	if *covRep != "" {
+		// RepeatMasker coverage for repeat types seen by krishna.
+		for _, t := range ts {
+			t.Do(func(iv interval.IntInterface) (done bool) {
+				rec := iv.(*record)
+				if rec.left == none || rec.right < rec.left { // RepeatMasker...
+					return
+				}
+				if v, ok := coverage[rec.name]; ok {
+					v[0].SetRange(rec.left, rec.right, stepBool(true))
+				}
+				return
+			})
+		}
+		err = writeCoverage(*covRep, coverage)
+		if err != nil {
+			log.Fatalf("failed to write coverage report: %v", err)
+		}
+	}
+}
+
+// stepBool is a bool type satisfying the step.Equaler interface.
+type stepBool bool
+
+// Equal returns whether b equals e. Equal assumes the underlying type of e is a stepBool.
+func (b stepBool) Equal(e step.Equaler) bool {
+	return b == e.(stepBool)
 }
 
 // makeAnoot return an annotation map
@@ -277,6 +340,49 @@ func makeAnnot(target *gff.Feature, m matches, mapping []byte, buf *bytes.Buffer
 	}
 
 	return buf.Bytes()
+}
+
+func writeCoverage(file string, coverage map[string][2]*step.Vector) error {
+	if len(coverage) == 0 {
+		return nil
+	}
+	f, err := os.Create(file)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	const mapLen = 40
+	cov := [2][]byte{make([]byte, mapLen), make([]byte, mapLen)}
+
+	tw := tabwriter.NewWriter(f, 0, 0, 1, ' ', 0)
+	fmt.Fprintln(tw, "repeat\tnamed coverage\tde novo coverage")
+	defer tw.Flush()
+
+	names := make([]string, 0, len(coverage))
+	for n := range coverage {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		pair := coverage[n]
+		scale := mapLen / float64(max(pair[0].Len(), pair[1].Len()))
+		for i, v := range pair {
+			for j := range cov[0] {
+				cov[i][j] = '-'
+			}
+			v.Do(func(start, end int, e step.Equaler) {
+				if e.(stepBool) {
+					for j := int(float64(start) * scale); j < int(float64(end)*scale); j++ {
+						cov[i][j] = '#'
+					}
+				}
+			})
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", n, cov[0], cov[1])
+	}
+
+	return nil
 }
 
 // contig is a sequence contig with repeats mapped to it.
