@@ -10,10 +10,8 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -22,10 +20,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/biogo/biogo/alphabet"
+	"github.com/biogo/biogo/io/featio/gff"
 	"github.com/biogo/biogo/io/seqio"
 	"github.com/biogo/biogo/io/seqio/fasta"
 	"github.com/biogo/biogo/seq"
@@ -68,7 +68,7 @@ func main() {
 	flag.Parse()
 
 	if len(flag.Args()) != 1 {
-		fmt.Fprintln(os.Stderr, "Need single input file.")
+		fmt.Fprintln(os.Stderr, "Need single input gff file (output from gffer or victor).")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -103,25 +103,30 @@ func main() {
 		log.Printf("error: could not open %s to read %v", flag.Args()[0], err)
 	}
 	defer f.Close()
-	b := bufio.NewReader(f)
 
-	for fam := 0; ; fam++ {
-		l, err := b.ReadBytes('\n')
+	var v []*gff.Feature
+	r := familyReader{r: gff.NewReader(f)}
+	for {
+		err := r.readInto(&v)
 		if err != nil {
+			if err != io.EOF {
+				log.Fatalf("failed reading input file %q: %v", flag.Args()[0], err)
+			}
 			break
 		}
-		v := []*feat{}
-		err = json.Unmarshal(l, &v)
-		if err != nil {
-			log.Fatalf("error: %v", err)
-		}
+
 		if len(v) < minFamily {
 			continue
 		}
 
+		fam, err := strconv.Atoi(v[0].FeatAttributes.Get("Family"))
+		if err != io.EOF {
+			log.Fatalf("failed to parse family id %q: %v", v[0].FeatAttributes, err)
+		}
+
 		var maxLen int
 		for _, f := range v {
-			if l := f.End - f.Start; l > maxLen {
+			if l := f.Len(); l > maxLen {
 				maxLen = l
 			}
 		}
@@ -129,7 +134,7 @@ func main() {
 
 		var validLengthed int
 		for _, f := range v {
-			if f.End-f.Start >= lenThresh {
+			if f.Len() >= lenThresh {
 				validLengthed++
 			}
 		}
@@ -148,7 +153,7 @@ func main() {
 
 		if subSample {
 			// Shuffle first.
-			w := make([]*feat, 0, len(v))
+			w := make([]*gff.Feature, 0, len(v))
 			for _, j := range rand.Perm(len(v)) {
 				w = append(w, v[j])
 			}
@@ -157,20 +162,20 @@ func main() {
 
 		var sampled int
 		for id, f := range v {
-			if f.End-f.Start < lenThresh {
+			if f.Len() < lenThresh {
 				continue
 			}
 			if sampled++; subSample && sampled > maxFam {
 				break
 			}
-			ss := *refStore[f.Chr]
-			sequtils.Truncate(&ss, refStore[f.Chr], f.Start, f.End)
-			if f.Orient == seq.Minus {
+			ss := *refStore[f.SeqName]
+			sequtils.Truncate(&ss, refStore[f.SeqName], f.FeatStart, f.FeatEnd)
+			if f.FeatStrand == seq.Minus {
 				ss.RevComp()
 			}
 			ss.ID = fmt.Sprintf("family%06d_member%04d", fam, id)
-			ss.Desc = fmt.Sprintf("%s:%d-%d %v (%d members - %d members within %.2f of maximum length)",
-				f.Chr, f.Start, f.End, f.Orient, len(v), validLengthed, lengthFrac,
+			ss.Desc = fmt.Sprintf("%s:%d-%d %v (%d members - %d members within %.2f of maximum length) %v",
+				f.SeqName, f.FeatStart, f.FeatEnd, f.FeatStrand, len(v), validLengthed, lengthFrac, f.FeatAttributes,
 			)
 			if dir == "" {
 				fmt.Printf("%60a\n", &ss)
@@ -216,6 +221,34 @@ func main() {
 		}
 	}
 	wait()
+}
+
+type familyReader struct {
+	r       *gff.Reader
+	last    *gff.Feature
+	lastFam string
+}
+
+func (r *familyReader) readInto(v *[]*gff.Feature) error {
+	*v = (*v)[:0]
+	if r.last != nil {
+		*v = append(*v, r.last)
+	}
+	for {
+		f, err := r.r.Read()
+		if err != nil {
+			return err
+		}
+		gf := f.(*gff.Feature)
+		fam := gf.FeatAttributes.Get("Family")
+		isNext := fam != r.lastFam
+		r.last = gf
+		r.lastFam = fam
+		if isNext && len(*v) != 0 {
+			return nil
+		}
+		*v = append(*v, gf)
+	}
 }
 
 func getReference(refName string) map[string]*linear.Seq {
