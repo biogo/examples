@@ -74,7 +74,8 @@ func main() {
 	)
 	for p.RetStart = 0; p.RetStart < s.Count; p.RetStart += p.RetMax {
 		fmt.Fprintf(os.Stderr, "Attempting to retrieve %d records starting from %d with %d retries.\n", p.RetMax, p.RetStart, *retries)
-		for t := 0; t < *retries; t++ {
+		var t int
+		for t = 0; t < *retries; t++ {
 			buf.Reset()
 			var (
 				r   io.ReadCloser
@@ -82,7 +83,10 @@ func main() {
 			)
 			r, err = entrez.Fetch(db, p, tool, *email, &h)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to retrieve on attempt %d... retrying.\n", t)
+				if r != nil {
+					r.Close()
+				}
+				fmt.Fprintf(os.Stderr, "Failed to retrieve on attempt %d... error: %v retrying.\n", t, err)
 				continue
 			}
 			_bn, err = io.Copy(buf, r)
@@ -91,14 +95,13 @@ func main() {
 			if err == nil {
 				break
 			}
-			fmt.Fprintf(os.Stderr, "Failed to buffer on attempt %d... retrying.\n")
+			fmt.Fprintf(os.Stderr, "Failed to buffer on attempt %d... error: %v retrying.\n", t, err)
 		}
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Exceeded retries: last error: %v\n", err)
 			os.Exit(1)
 		}
 
-		fmt.Fprintln(os.Stderr, "Retrieved records... writing out.")
+		fmt.Fprintf(os.Stderr, "Retrieved records with %d retries... writing out.\n", t)
 		_n, err := io.Copy(of, buf)
 		n += _n
 		if err != nil {
