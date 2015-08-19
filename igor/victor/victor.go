@@ -223,6 +223,7 @@ var _ dot.Attributer = edge{}
 
 func (e edge) From() graph.Node { return e.from }
 func (e edge) To() graph.Node   { return e.to }
+func (e edge) Weight() float64  { return e.weight }
 func (e edge) DOTAttributes() []dot.Attribute {
 	return []dot.Attribute{{"weight", fmt.Sprint(e.weight)}}
 }
@@ -414,14 +415,14 @@ func dotted(id []int) string {
 }
 
 func writeDOT(file string, edges []edge) {
-	g := concrete.NewDirectedGraph()
+	g := concrete.NewDirectedGraph(0, math.Inf(1))
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
 			if !g.Has(n) {
 				g.AddNode(n)
 			}
 		}
-		g.SetEdge(e, 0)
+		g.SetEdge(e)
 	}
 
 	f, err := os.Create(*dotOut)
@@ -449,14 +450,14 @@ type group struct {
 }
 
 func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group {
-	g := concrete.NewGraph()
+	g := concrete.NewGraph(0, math.Inf(1))
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
 			if !g.Has(n) {
 				g.AddNode(n)
 			}
 		}
-		g.SetEdge(e, 0)
+		g.SetEdge(e)
 	}
 
 	ltable := make(map[int]int, len(fams))
@@ -503,7 +504,7 @@ func cliquesIn(grp group, edges []edge, min int) [][]int {
 		isMember[fam.id] = struct{}{}
 	}
 
-	g := concrete.NewGraph()
+	g := concrete.NewGraph(0, math.Inf(1))
 outer:
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
@@ -517,7 +518,7 @@ outer:
 				g.AddNode(n)
 			}
 		}
-		g.SetEdge(e, 0)
+		g.SetEdge(e)
 	}
 
 	clqs := topo.BronKerbosch(g)
@@ -542,7 +543,7 @@ func ranksOf(grp group, edges []edge) ranks {
 		isMember[fam.id] = struct{}{}
 	}
 
-	g := concrete.NewDirectedGraph()
+	g := concrete.NewDirectedGraph(0, math.Inf(1))
 outer:
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
@@ -556,7 +557,7 @@ outer:
 				g.AddNode(n)
 			}
 		}
-		g.SetEdge(e, 0)
+		g.SetEdge(e)
 	}
 
 	r := network.PageRank(g, 0.85, 1e-6)
