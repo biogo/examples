@@ -293,7 +293,8 @@ func makeAnnot(target *gff.Feature, m matches, mapping []byte, buf *bytes.Buffer
 		}
 
 		if mapStart < 0 || mapStart > mapLen || mapEnd < 0 || mapEnd > mapLen {
-			log.Fatalf("failed to map: mapStart: %d, mapEnd: %d, mapLen: %d\n", mapStart, mapEnd, mapLen)
+			log.Fatalf("failed to map: mapStart: %d, mapEnd: %d, mapLen: %d feature: %+v annotation: %+v\n",
+				mapStart, mapEnd, mapLen, target, rec)
 		}
 
 		if mapStart < mapEnd {

@@ -23,9 +23,9 @@ import (
 	"github.com/biogo/store/step"
 
 	"github.com/gonum/graph"
-	"github.com/gonum/graph/concrete"
 	"github.com/gonum/graph/encoding/dot"
 	"github.com/gonum/graph/network"
+	"github.com/gonum/graph/simple"
 	"github.com/gonum/graph/topo"
 )
 
@@ -415,7 +415,7 @@ func dotted(id []int) string {
 }
 
 func writeDOT(file string, edges []edge) {
-	g := concrete.NewDirectedGraph(0, math.Inf(1))
+	g := simple.NewDirectedGraph(0, math.Inf(1))
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
 			if !g.Has(n) {
@@ -450,7 +450,7 @@ type group struct {
 }
 
 func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group {
-	g := concrete.NewGraph(0, math.Inf(1))
+	g := simple.NewUndirectedGraph(0, math.Inf(1))
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
 			if !g.Has(n) {
@@ -504,7 +504,7 @@ func cliquesIn(grp group, edges []edge, min int) [][]int {
 		isMember[fam.id] = struct{}{}
 	}
 
-	g := concrete.NewGraph(0, math.Inf(1))
+	g := simple.NewUndirectedGraph(0, math.Inf(1))
 outer:
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
@@ -543,7 +543,7 @@ func ranksOf(grp group, edges []edge) ranks {
 		isMember[fam.id] = struct{}{}
 	}
 
-	g := concrete.NewDirectedGraph(0, math.Inf(1))
+	g := simple.NewDirectedGraph(0, math.Inf(1))
 outer:
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
