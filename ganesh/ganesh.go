@@ -133,7 +133,7 @@ func main() {
 
 	if *transpose {
 		colNames, rowNames = rowNames, colNames
-		mat.TCopy(mat)
+		mat.Clone(mat.T())
 	}
 	r, c := mat.Dims()
 

@@ -7,12 +7,13 @@ import (
 	"image/png"
 	"os"
 
+	"github.com/gonum/plot/palette"
+
 	"github.com/biogo/biogo/alphabet"
 	"github.com/biogo/biogo/index/kmerindex"
 	"github.com/biogo/biogo/io/seqio/fasta"
 	"github.com/biogo/biogo/seq/linear"
 	"github.com/biogo/graphics/kmercolor"
-	"github.com/biogo/graphics/palette"
 )
 
 func main() {
