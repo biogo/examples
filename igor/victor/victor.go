@@ -13,16 +13,20 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"os"
 	"runtime"
 	"sort"
 	"sync"
+
+	"golang.org/x/tools/container/intsets"
 
 	"github.com/biogo/biogo/io/featio/gff"
 	"github.com/biogo/biogo/seq"
 	"github.com/biogo/store/step"
 
 	"github.com/gonum/graph"
+	"github.com/gonum/graph/community"
 	"github.com/gonum/graph/encoding/dot"
 	"github.com/gonum/graph/network"
 	"github.com/gonum/graph/simple"
@@ -30,12 +34,13 @@ import (
 )
 
 var (
-	in      = flag.String("in", "", "Specifies the input json file name.")
-	dotOut  = flag.String("dot", "", "Specifies the output DOT file name.")
-	thresh  = flag.Float64("thresh", 0.05, "Specifies minimum family intersection to report.")
-	minFam  = flag.Int("min", 0, "Specify the minimum number of members in a family to include (if 0 no limit).")
-	cliques = flag.Bool("cliques", false, "Find cliques in non-clique clusters.")
-	threads = flag.Int("threads", 0, "Specify the number of parallel connection threads (if 0 use GOMAXPROCS).")
+	in         = flag.String("in", "", "Specifies the input json file name.")
+	dotOut     = flag.String("dot", "", "Specifies the output DOT file name.")
+	thresh     = flag.Float64("thresh", 0.05, "Specifies minimum family intersection to report.")
+	resolution = flag.Float64("resolution", 1, "Specifies the resolution for cluster modularisation.")
+	minFam     = flag.Int("min", 0, "Specify the minimum number of members in a family to include (if 0 no limit).")
+	cliques    = flag.Bool("cliques", false, "Find cliques in non-clique clusters.")
+	threads    = flag.Int("threads", 0, "Specify the number of parallel connection threads (if 0 use GOMAXPROCS).")
 )
 
 func main() {
@@ -78,16 +83,24 @@ func main() {
 	c := connector{limit: make(chan struct{}, *threads)}
 	edges := c.edgesFor(families, *thresh)
 
-	if *dotOut != "" {
-		writeDOT(*dotOut, edges)
-	}
-
 	const minSubClique = 3
-	grps := groups(families, edges, minSubClique, *cliques)
+	grps := groups(families, edges, *resolution, minSubClique, *cliques)
 
 	clusterIdentity := make(map[int]int)
 	cliqueIdentity := make(map[int][]int)
 	cliqueMemberships := make(map[int]int)
+
+	for _, g := range grps {
+		// Collate counts for clique memberships. We cannot do
+		// this one group at a time; a member of a group can be
+		// a clique member of another group since they are in
+		// potentially in connection with other groups.
+		for _, clique := range g.cliques {
+			for _, m := range clique {
+				cliqueMemberships[m]++
+			}
+		}
+	}
 	for _, g := range grps {
 		fmt.Fprintf(os.Stderr, "clique=%t", g.isClique)
 		for _, m := range g.members {
@@ -100,15 +113,6 @@ func main() {
 		}
 		if len(g.cliques) != 0 {
 			fmt.Fprintf(os.Stderr, " (%d+)-cliquesIn=%v", minSubClique, g.cliques)
-		}
-		// Collate counts for clique memberships. We can do this
-		// one group at a time; a member of a group cannot be a
-		// clique member of another group since they are in
-		// separate connected components.
-		for _, clique := range g.cliques {
-			for _, m := range clique {
-				cliqueMemberships[m]++
-			}
 		}
 		for _, clique := range g.cliques {
 			// Make PageRanked version of clique.
@@ -138,6 +142,17 @@ func main() {
 			}
 		}
 		fmt.Fprintf(os.Stderr, " PageRank=%+v\n", g.pageRank)
+	}
+	for i, e := range edges {
+		if clustID, isClustered := clusterIdentity[e.from.id]; isClustered {
+			edges[i].from.cluster = clustID
+		}
+		if clustID, isClustered := clusterIdentity[e.to.id]; isClustered {
+			edges[i].to.cluster = clustID
+		}
+	}
+	if *dotOut != "" {
+		writeDOT(*dotOut, edges)
 	}
 
 	b := bufio.NewWriter(os.Stdout)
@@ -204,6 +219,7 @@ func (f byMembers) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 
 type node struct {
 	id      int
+	cluster int
 	members int
 }
 
@@ -211,7 +227,13 @@ var _ dot.Attributer = node{}
 
 func (n node) ID() int { return n.id }
 func (n node) DOTAttributes() []dot.Attribute {
-	return []dot.Attribute{{"members", fmt.Sprint(n.members)}}
+	if n.cluster == -1 {
+		return []dot.Attribute{{"members", fmt.Sprint(n.members)}}
+	}
+	return []dot.Attribute{
+		{"cluster", fmt.Sprint(n.cluster)},
+		{"members", fmt.Sprint(n.members)},
+	}
 }
 
 type edge struct {
@@ -318,8 +340,8 @@ func (c *connector) edgesFor(f []family, thresh float64) []edge {
 				}
 
 				c.connect(edge{
-					from:   node{id: a.id, members: len(a.members)},
-					to:     node{id: b.id, members: len(b.members)},
+					from:   node{id: a.id, cluster: -1, members: len(a.members)},
+					to:     node{id: b.id, cluster: -1, members: len(b.members)},
 					weight: upper,
 				})
 
@@ -328,8 +350,8 @@ func (c *connector) edgesFor(f []family, thresh float64) []edge {
 				}
 
 				c.connect(edge{
-					from:   node{id: b.id, members: len(b.members)},
-					to:     node{id: a.id, members: len(a.members)},
+					from:   node{id: b.id, cluster: -1, members: len(b.members)},
+					to:     node{id: a.id, cluster: -1, members: len(a.members)},
 					weight: lower,
 				})
 			}()
@@ -449,8 +471,8 @@ type group struct {
 	pageRank ranks
 }
 
-func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group {
-	g := simple.NewUndirectedGraph(0, math.Inf(1))
+func groups(fams []family, edges []edge, resolution float64, minSubClique int, cliques bool) []group {
+	g := simple.NewDirectedGraph(0, 0)
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
 			if !g.Has(n) {
@@ -460,16 +482,16 @@ func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group
 		g.SetEdge(e)
 	}
 
-	ltable := make(map[int]int, len(fams))
+	familyIndexOf := make(map[int]int, len(fams))
 	for i, f := range fams {
-		ltable[f.id] = i
+		familyIndexOf[f.id] = i
 	}
 	var grps []group
-	cc := topo.ConnectedComponents(g)
-	for _, c := range cc {
+	r := community.Louvain(graph.Undirect{G: g}, resolution, rand.New(rand.NewSource(1)))
+	for _, c := range r.Communities() {
 		var grp group
 		for _, n := range c {
-			grp.members = append(grp.members, fams[ltable[n.ID()]])
+			grp.members = append(grp.members, fams[familyIndexOf[n.ID()]])
 		}
 		if len(grp.members) == 2 || edgesIn(g, c)*2 == len(c)*(len(c)-1) {
 			grp.isClique = true
@@ -486,16 +508,39 @@ func groups(fams []family, edges []edge, minSubClique int, cliques bool) []group
 	return grps
 }
 
-func edgesIn(g graph.Graph, n []graph.Node) int {
-	e := make(map[[2]int]struct{})
+func edgesIn(g graph.Directed, n []graph.Node) int {
+	var in intsets.Sparse
 	for _, u := range n {
+		in.Insert(u.ID())
+	}
+	seen := make(map[[2]int]struct{})
+	// We could use graph.Undirect here, but the
+	// overhead increases and we don't actually
+	// need all the nodes, just the edges.
+	for _, u := range n {
+		uid := u.ID()
 		for _, v := range g.From(u) {
-			if u.ID() < v.ID() {
-				e[[2]int{u.ID(), v.ID()}] = struct{}{}
+			vid := v.ID()
+			if !in.Has(vid) {
+				continue
 			}
+			if uid > vid {
+				uid, vid = vid, uid
+			}
+			seen[[2]int{uid, vid}] = struct{}{}
+		}
+		for _, v := range g.To(u) {
+			vid := v.ID()
+			if !in.Has(vid) {
+				continue
+			}
+			if uid > vid {
+				uid, vid = vid, uid
+			}
+			seen[[2]int{uid, vid}] = struct{}{}
 		}
 	}
-	return len(e)
+	return len(seen)
 }
 
 func cliquesIn(grp group, edges []edge, min int) [][]int {
