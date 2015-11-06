@@ -156,7 +156,7 @@ func main() {
 	}
 	piles, err := igor.Piles(in, mergeOverlap, pf)
 	if err != nil {
-		log.Fatalf("piling error:", err)
+		log.Fatalf("piling error: %v", err)
 	}
 
 	var clusters [][]*pals.Pile
