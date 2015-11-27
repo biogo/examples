@@ -120,7 +120,7 @@ func main() {
 		}
 
 		fam, err := strconv.Atoi(v[0].FeatAttributes.Get("Family"))
-		if err != io.EOF {
+		if err != nil {
 			log.Fatalf("failed to parse family id %q: %v", v[0].FeatAttributes, err)
 		}
 
