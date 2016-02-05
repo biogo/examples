@@ -59,6 +59,7 @@ var (
 
 	threads int
 	bug     bool
+	logFreq int
 )
 
 func init() {
@@ -76,6 +77,7 @@ func init() {
 
 	flag.IntVar(&threads, "threads", 4, "Number of parallel clustering threads to use.")
 	flag.BoolVar(&bug, "debug", false, "Print graph generation information.")
+	flag.IntVar(&logFreq, "log-freq", 0, "Log piling progress every n iterations (0 none).")
 
 	flag.BoolVar(&classic, "classic", false, "Run a reasonable approximation of the C implementation of PILER.")
 
@@ -154,7 +156,11 @@ func main() {
 			return imageOK && pilesOK
 		}
 	}
-	piles, err := igor.Piles(in, mergeOverlap, pf)
+	var l *log.Logger
+	if logFreq != 0 {
+		l = log.New(os.Stderr, "", log.LstdFlags)
+	}
+	piles, err := igor.Piles(in, mergeOverlap, pf, l, logFreq)
 	if err != nil {
 		log.Fatalf("piling error: %v", err)
 	}

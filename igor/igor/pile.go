@@ -5,6 +5,8 @@
 package igor
 
 import (
+	"log"
+
 	"github.com/biogo/biogo/align/pals"
 	"github.com/biogo/biogo/io/featio"
 	"github.com/biogo/biogo/io/featio/gff"
@@ -29,9 +31,11 @@ func (is store) intern(c pals.Contig) pals.Contig {
 // Piles reads the features in the input gff.Reader and applies pals.Piler analysis
 // using the specified overlap and pair filter function. The features in the input
 // must satisfy pals.ExpandFeature restrictions.
-func Piles(in *gff.Reader, overlap int, pf pals.PairFilter) ([]*pals.Pile, error) {
+func Piles(in *gff.Reader, overlap int, pf pals.PairFilter, l *log.Logger, freq int) ([]*pals.Pile, error) {
 	piler := pals.NewPiler(overlap)
 	contigs := make(store)
+
+	var n int
 
 	sc := featio.NewScanner(in)
 	for sc.Next() {
@@ -45,10 +49,16 @@ func Piles(in *gff.Reader, overlap int, pf pals.PairFilter) ([]*pals.Pile, error
 		p.B.Loc = contigs.intern(p.B.Loc.(pals.Contig))
 
 		piler.Add(p)
+		n++
+		if l != nil && freq != 0 && n%freq == 0 {
+			l.Printf("added %d images", n)
+		}
 	}
 	if err := sc.Error(); err != nil {
 		return nil, err
 	}
 
+	piler.Logger = l
+	piler.LogFreq = freq
 	return piler.Piles(pf), nil
 }
