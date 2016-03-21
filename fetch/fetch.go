@@ -90,7 +90,7 @@ func main() {
 				if r != nil {
 					r.Close()
 				}
-				log.Printf("failed to retrieve on attempt %d... error: %v retrying.\n", t, err)
+				log.Printf("failed to retrieve on attempt %d... error: %v ... retrying.\n", t, err)
 				continue
 			}
 			_bn, err = io.Copy(buf, r)
@@ -99,7 +99,7 @@ func main() {
 			if err == nil {
 				break
 			}
-			log.Printf("failed to buffer on attempt %d... error: %v retrying.\n", t, err)
+			log.Printf("failed to buffer on attempt %d... error: %v ... retrying.\n", t, err)
 		}
 		if err != nil {
 			os.Exit(1)
