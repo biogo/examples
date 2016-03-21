@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/biogo/ncbi"
 	"github.com/biogo/ncbi/entrez"
 )
 
@@ -37,6 +38,8 @@ var (
 )
 
 func main() {
+	ncbi.SetTimeout(0)
+
 	flag.Parse()
 
 	if *help {
