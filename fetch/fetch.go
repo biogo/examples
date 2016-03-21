@@ -9,8 +9,8 @@ package main
 import (
 	"bytes"
 	"flag"
-	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"github.com/biogo/ncbi"
@@ -54,10 +54,10 @@ func main() {
 	h := entrez.History{}
 	s, err := entrez.DoSearch(db, *clQuery, nil, &h, tool, *email)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		log.Printf("error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Fprintf(os.Stderr, "Will retrieve %d records.\n", s.Count)
+	log.Printf("will retrieve %d records.\n", s.Count)
 
 	var of *os.File
 	if *out == "" {
@@ -65,7 +65,7 @@ func main() {
 	} else {
 		of, err = os.Create(*out)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			log.Printf("error: %v\n", err)
 			os.Exit(1)
 		}
 		defer of.Close()
@@ -77,7 +77,7 @@ func main() {
 		bn, n int64
 	)
 	for p.RetStart = 0; p.RetStart < s.Count; p.RetStart += p.RetMax {
-		fmt.Fprintf(os.Stderr, "Attempting to retrieve %d records starting from %d with %d retries.\n", p.RetMax, p.RetStart, *retries)
+		log.Printf("attempting to retrieve %d records starting from %d with %d retries.\n", p.RetMax, p.RetStart, *retries)
 		var t int
 		for t = 0; t < *retries; t++ {
 			buf.Reset()
@@ -90,7 +90,7 @@ func main() {
 				if r != nil {
 					r.Close()
 				}
-				fmt.Fprintf(os.Stderr, "Failed to retrieve on attempt %d... error: %v retrying.\n", t, err)
+				log.Printf("failed to retrieve on attempt %d... error: %v retrying.\n", t, err)
 				continue
 			}
 			_bn, err = io.Copy(buf, r)
@@ -99,21 +99,21 @@ func main() {
 			if err == nil {
 				break
 			}
-			fmt.Fprintf(os.Stderr, "Failed to buffer on attempt %d... error: %v retrying.\n", t, err)
+			log.Printf("failed to buffer on attempt %d... error: %v retrying.\n", t, err)
 		}
 		if err != nil {
 			os.Exit(1)
 		}
 
-		fmt.Fprintf(os.Stderr, "Retrieved records with %d retries... writing out.\n", t)
+		log.Printf("retrieved records with %d retries... writing out.\n", t)
 		_n, err := io.Copy(of, buf)
 		n += _n
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			log.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
 	}
 	if bn != n {
-		fmt.Fprintf(os.Stderr, "Writethrough mismatch: %d != %d\n", bn, n)
+		log.Printf("writethrough mismatch: %d != %d\n", bn, n)
 	}
 }
