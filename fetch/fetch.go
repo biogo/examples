@@ -18,9 +18,10 @@ import (
 
 const (
 	db    = "protein"
-	query = `(Eukaryota[Organism] OR ("Retro-transcribing viruses"[Organism] NOT Hepadnaviridae)) AND ` +
-		`(("group-specific antigen" OR "gag") OR ("Reverse transcriptase (RNA-dependent DNA polymerase)" OR "pol")) ` +
-		`NOT (partial)`
+	query = `"reverse transcriptase" or "transposon" or "repetitive element" or ` +
+		`"RNA-directed DNA polymerase" or "pol protein" or "non-LTR retrotransposon" or ` +
+		`"mobile element" or "retroelement" or "polyprotein" or "retrovirus" or ` +
+		`("group-specific antigen" "gag") or "polymerase (pol)"`
 
 	tool = "biogo.example"
 )
