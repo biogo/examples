@@ -73,7 +73,7 @@ func init() {
 	flag.IntVar(&tubeOffset, "tubeoffset", 0, "Tube offset - 0 indicate autotune.")
 
 	flag.StringVar(&tmpDir, "tmp", "", "Path for temporary files.")
-	flag.IntVar(&tmpChunk, "chunk", 1<<20, "Chunk size for morass.")
+	flag.IntVar(&tmpChunk, "chunk", 100e6, "Chunk size for morass.")
 	flag.BoolVar(&tmpConcurrent, "tmpcon", false, "Process morass concurrently.")
 
 	flag.IntVar(&threads, "threads", 1, "Number of threads to use for alignment.")
