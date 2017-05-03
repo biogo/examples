@@ -6,12 +6,14 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
+	"os"
+
 	"github.com/biogo/biogo/alphabet"
 	"github.com/biogo/biogo/io/seqio/fasta"
 	"github.com/biogo/biogo/seq/linear"
-	"os"
 )
 
 
@@ -25,15 +27,16 @@ var (
 
 func main() {
 	flag.Parse()
+	ml := *minLen
 	if *help {
 		flag.Usage()
 		os.Exit(0)
 	}
 	f, err := os.Open(*inf)
-	  if err != nil {
-		  fmt.Fprintf(os.Stderr, "open input FASTA file: %v.", err)
-		  os.Exit(1)
-	  }
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open input FASTA file: %v.", err)
+		os.Exit(1)
+	}
 	defer f.Close()
 	dnaf := fasta.NewReader(f, linear.NewSeq("", nil, alphabet.DNA))
 	of, err := os.Create(*outf)
@@ -52,7 +55,7 @@ func main() {
 			}
 		} else {
 			s := s.(*linear.Seq)
-			if len(s.Seq) > (*minLen){
+			if len(s.Seq) > ml {
 				_, err := w.Write(s)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "write FASTA record: %v", err)

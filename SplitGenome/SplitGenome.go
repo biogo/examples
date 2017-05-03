@@ -33,8 +33,8 @@ type fs []feat.Feature
 func (f fs) Features() []feat.Feature { return []feat.Feature(f) }
 
 var (
-	inf     = flag.String("inf", "bd.fasta", "input filename")
-	outf    = flag.String("outf", "split_bd.fasta", "output filename")
+	inf     = flag.String("inf", "test.fna", "input filename")
+	outf    = flag.String("outf", "split_test.fna", "output filename")
 	minLen = flag.Int("minLen", 2500, "minimum sequence length cut-off (bp)")
 	winLen = flag.Int("winLen", 5000, "sequence window length (bp)")
 	help    = flag.Bool("help", false, "help prints this message.")

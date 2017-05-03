@@ -7,13 +7,15 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"github.com/biogo/biogo/alphabet"
-	"github.com/biogo/biogo/io/seqio/fasta"
-	"github.com/biogo/biogo/seq/linear"
 	"io"
 	"log"
 	"os"
+
+	"github.com/biogo/biogo/alphabet"
+	"github.com/biogo/biogo/io/seqio/fasta"
+	"github.com/biogo/biogo/seq/linear"
 )
 var (
 	inf     = flag.String("inf", "test.aln", "input FASTA filename")
@@ -58,7 +60,7 @@ func main() {
 			totSeq = totSeq + 1
 		}
 	}
-	f, err = os.Open(inf)
+	f, err = os.Open(*inf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open FASTA file: %v.", err)
 		os.Exit(1)
