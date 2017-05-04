@@ -32,7 +32,7 @@ func main() {
 	f, err := os.Open("test.aln")
 	var (
 		alnLen int // alignment length
-		totSeq int // Total number of sequences in the alignment
+		totSeq int // Total number of sequences
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open FASTA file: %v.", err)

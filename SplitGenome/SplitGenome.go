@@ -42,7 +42,6 @@ var (
 
 func main() {
 	flag.Parse()
-	minLen, winLen := *minLen, *winLen
 	if *help {
 		flag.Usage()
 		os.Exit(0)
@@ -71,15 +70,15 @@ func main() {
 			}
 		} else {
 			s := s.(*linear.Seq)
-			if len(s.Seq) > minLen {
-				if len(s.Seq) < 2*winLen {
+			if len(s.Seq) > *minLen {
+				if len(s.Seq) < 2* (*winLen) {
 					if _, err = w.Write(s); err != nil {
 						fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
 					}
 				} else {
-					for i := 0; i < len(s.Seq); i = i + winLen {
+					for i := 0; i < len(s.Seq); i = i + *winLen {
 						ff := fs{
-							fe{s: i, e: i + winLen},
+							fe{s: i, e: i + *winLen},
 						}
 						if err := sequtils.Stitch(d, s, ff); err == nil {
 							d.Desc = fmt.Sprintf("%v_%v", s.Desc, i)

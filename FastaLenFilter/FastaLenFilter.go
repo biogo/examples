@@ -27,7 +27,6 @@ var (
 
 func main() {
 	flag.Parse()
-	ml := *minLen
 	if *help {
 		flag.Usage()
 		os.Exit(0)
@@ -55,7 +54,7 @@ func main() {
 			}
 		} else {
 			s := s.(*linear.Seq)
-			if len(s.Seq) > ml {
+			if len(s.Seq) > *minLen {
 				_, err := w.Write(s)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "write FASTA record: %v", err)
