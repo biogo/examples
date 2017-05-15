@@ -2,7 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Split genomic contigs into fragments of a given size window (winLen)
+// Split genomic contigs into fragments of a given size window (winLen).
+// Example: if a contig is 14kb long, split into 5 and 9 kb instead of 5, 5 
+// and 4 kb fragments, see:
+// https://www.ncbi.nlm.nih.gov/pubmed/19698104
+
 package main
 
 import (
@@ -59,6 +63,7 @@ func main() {
 		os.Exit(1)
 	}
 	d := linear.NewSeq("", nil, alphabet.DNA)
+	res := linear.NewSeq("", nil, alphabet.DNA)
 	w := fasta.NewWriter(of, 60)
 	defer of.Close()
 	for {
@@ -70,25 +75,45 @@ func main() {
 			}
 		} else {
 			s := s.(*linear.Seq)
-			if len(s.Seq) > *minLen {
-				if len(s.Seq) < 2* (*winLen) {
-					if _, err = w.Write(s); err != nil {
-						fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
-					}
-				} else {
-					for i := 0; i < len(s.Seq); i = i + *winLen {
+			switch {
+			case len(s.Seq) >= *minLen && len(s.Seq) < 2*(*winLen):
+				if _, err = w.Write(s); err != nil {
+					fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
+				}
+			case len(s.Seq) >= 2*(*winLen):
+				for i := 0; i < len(s.Seq); i = i + *winLen {
+					j := len(s.Seq) - i
+					if j < *winLen {
+						prev := d
+						ff := fs{
+							fe{s: i, e: j + i + *winLen},
+						}
+						if err := sequtils.Stitch(res, s, ff); err == nil {
+							res.Desc = fmt.Sprintf("%v_clean_%v", s.Desc, i)
+							sequtils.Join(prev, res, 2)
+						}
+						prev.Desc = fmt.Sprintf("%v_remainder_%v", s.Desc,
+							len(prev.Seq))
+						if _, err = w.Write(prev); err != nil {
+							fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
+						}
+					} else {
 						ff := fs{
 							fe{s: i, e: i + *winLen},
 						}
 						if err := sequtils.Stitch(d, s, ff); err == nil {
-							d.Desc = fmt.Sprintf("%v_%v", s.Desc, i)
+							d.Desc = fmt.Sprintf("%v_clean_%v", s.Desc, i)
 							if _, err = w.Write(d); err != nil {
 								fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
 							}
 						}
 					}
 				}
+			case len(s.Seq) < *minLen:
+				fmt.Printf("%d bp < %d; discard %s\n", len(s.Seq), *minLen, s.Name())
 			}
+
 		}
+
 	}
 }
