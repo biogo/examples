@@ -7,23 +7,21 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"io"
+	"log"
 	"os"
 
 	"github.com/biogo/biogo/alphabet"
+	"github.com/biogo/biogo/io/seqio"
 	"github.com/biogo/biogo/io/seqio/fasta"
 	"github.com/biogo/biogo/seq/linear"
 )
 
-
 var (
-	inf     = flag.String("inf", "test.fna", "input filename")
-	outf    = flag.String("outf", "test_gt2500bp.fna", "output filename")
-	minLen = flag.Int("minLen", 2500, "minimum sequence length cut-off (bp)")
-	help    = flag.Bool("help", false, "help prints this message.")
+	inf  = flag.String("inf", "test.fna", "input filename")
+	outf = flag.String("outf", "test_gt2500bp.fna", "output filename")
+	min  = flag.Int("minLen", 2500, "minimum sequence length cut-off (bp)")
+	help = flag.Bool("help", false, "help prints this message.")
 )
-
 
 func main() {
 	flag.Parse()
@@ -31,35 +29,32 @@ func main() {
 		flag.Usage()
 		os.Exit(0)
 	}
-	f, err := os.Open(*inf)
+	in, err := os.Open(*inf)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "open input FASTA file: %v.", err)
+		log.Fatalf("open input FASTA file: %v.", err)
 		os.Exit(1)
 	}
-	defer f.Close()
-	dnaf := fasta.NewReader(f, linear.NewSeq("", nil, alphabet.DNA))
-	of, err := os.Create(*outf)
+	defer in.Close()
+	r := fasta.NewReader(in, linear.NewSeq("", nil, alphabet.DNA))
+	out, err := os.Create(*outf)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "open output FASTA file: %v.", err)
+		log.Fatalf("open output FASTA file: %v.", err)
 		os.Exit(1)
 	}
-	w := fasta.NewWriter(of, 60)
-	defer of.Close()
-	for {
-		if s, err := dnaf.Read(); err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				fmt.Fprintf(os.Stderr, "read %v: %v", dnaf, err)
-			}
-		} else {
-			s := s.(*linear.Seq)
-			if len(s.Seq) > *minLen {
-				_, err := w.Write(s)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "write FASTA record: %v", err)
-				}
+	w := fasta.NewWriter(out, 60)
+	defer out.Close()
+	sc := seqio.NewScanner(r)
+	for sc.Next() {
+		s := sc.Seq()
+		if s.Len() > *min {
+			_, err := w.Write(s)
+			if err != nil {
+				log.Fatalf("failed to write sequence %q: %v", s.Name(), err)
 			}
 		}
+	}
+	err = sc.Error()
+	if err != nil {
+		log.Fatalf("failed during read: %v", err)
 	}
 }
