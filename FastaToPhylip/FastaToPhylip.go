@@ -65,8 +65,8 @@ func main() {
 	r = fasta.NewReader(in, linear.NewSeq("", nil, alphabet.Protein))
 	sc = seqio.NewScanner(r)
 	for sc.Next() {
-		s := sc.Seq()
-		alnRow := fmt.Sprintf("%s %v\n", s.Name(), s.(*linear.Seq).Seq)
+		s := sc.Seq().(*linear.Seq)
+		alnRow := fmt.Sprintf("%s %v\n", s.Name(), s.Seq)
 		io.WriteString(out, alnRow)
 		if s.Len() != alnLen {
 			log.Printf("WARNING: Length of sequence %s is different than %d\n",
