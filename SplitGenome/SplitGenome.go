@@ -6,7 +6,6 @@
 // of a given window size. If the last remaining fragment is below window
 // size join it to the previous fragment, based on:
 // https://github.com/tetramerFreqs/Binning/blob/master/tetramer_freqs_esom.pl
-
 package main
 
 import (
@@ -71,25 +70,26 @@ func main() {
 	for sc.Next() {
 		next := sc.Seq().(*linear.Seq)
 		switch {
-		default:
-			// contig is of the desired size range, write without any further modification
-			if _, err = w.Write(next); err != nil {
-				fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
-			}
+		case len(next.Seq) < *min:
+			// discard contigs below cut-off size limit
+			fmt.Printf("%d bp < %d; discard %s\n", len(next.Seq), *min, next.Name())
 		case len(next.Seq) >= 2*(*window):
 			// contig is over twice the window size, split it into window-sized fragments
 			for i := 0; i < len(next.Seq); i = i + *window {
 				j := len(next.Seq) - i
 				if j > *window {
-					// remaining fragment size is above window size
+					// remaining fragment size is above window size, 
+					// write curr fragment
 					ff := fs{
 						fe{s: i, e: i + *window},
 					}
-					if err := sequtils.Stitch(curr, next, ff); err == nil {
-						curr.Desc = fmt.Sprintf("%v_clean_%v", next.Desc, i)
-						if _, err = w.Write(curr); err != nil {
-							fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
+					err := sequtils.Stitch(curr, next, ff)
+					if err != nil {
+						continue
 						}
+					curr.Desc = fmt.Sprintf("%v_clean_%v", next.Desc, i)
+					if _, err = w.Write(curr); err != nil {
+						fmt.Fprintf(os.Stderr, "failed to write cut fragment :%v", err)
 					}
 				} else {
 					// remaining fragment size is below window size,
@@ -97,18 +97,23 @@ func main() {
 					ff := fs{
 						fe{s: i, e: j + i + *window},
 					}
-					if err := sequtils.Stitch(prev, next, ff); err == nil {
-						sequtils.Join(curr, prev, 2)
-					}
+					err := sequtils.Stitch(prev, next, ff)
+					if err != nil {
+						continue
+						}
+					sequtils.Join(curr, prev, 2)
 					curr.Desc = fmt.Sprintf("%v_remainder_%v", next.Desc, len(curr.Seq))
 					if _, err = w.Write(curr); err != nil {
-						fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
+						fmt.Fprintf(os.Stderr, "failed to write joined fragment :%v", err)
 					}
 				}
 			}
-		case len(next.Seq) < *min:
-			// discard contigs if they are below the minimum size cutoff
-			fmt.Printf("%d bp < %d; discard %s\n", len(next.Seq), *min, next.Name())
+		default:
+			// contig is of desired size range, write to output
+			if _, err = w.Write(next); err != nil {
+				fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
+			}
+
 		}
 
 	}
