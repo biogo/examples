@@ -35,14 +35,14 @@ func main() {
 	// open input (first pass) to get totSeq and alnLen
 	in, err := os.Open(*inf)
 	if err != nil {
-		log.Fatalf("open FASTA file: %v.", err)
+		log.Fatalf("open FASTA file (1st pass): %v.\n", err)
 		os.Exit(1)
 	}
 	defer in.Close()
 	r := fasta.NewReader(in, linear.NewSeq("", nil, alphabet.Protein))
 	out, err := os.Create(*outf)
 	if err != nil {
-		log.Fatalf("open PHYLIP file: %v.", err)
+		log.Fatalf("open PHYLIP file: %v.\n", err)
 		os.Exit(1)
 	}
 	defer out.Close()
@@ -58,7 +58,7 @@ func main() {
 	// open input (second pass) to read sequences and write to output
 	in, err = os.Open(*inf)
 	if err != nil {
-		log.Fatalf("open FASTA file: %v.", err)
+		log.Fatalf("open FASTA file (2nd pass): %v.", err)
 		os.Exit(1)
 	}
 	defer in.Close()
@@ -69,11 +69,11 @@ func main() {
 		alnRow := fmt.Sprintf("%s %v\n", s.Name(), s.Seq)
 		io.WriteString(out, alnRow)
 		if s.Len() != alnLen {
-			log.Printf("WARNING: Length of sequence %s is different than %d\n",
+			log.Printf("WARNING: Length of sequence %s is different than %d.\n",
 				s.Name(), alnLen)
 		}
 		if len(s.Name()) > 10 {
-			log.Printf("WARNING: Sequence ID %s is longer than 10 characters\n",
+			log.Printf("WARNING: Sequence ID %s is longer than 10 characters.\n",
 				s.Name())
 		}
 

@@ -2,16 +2,19 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Split genomic contigs of length above a minimum length into fragments
-// of a given window size. If the last remaining fragment is below window
-// size join it to the previous fragment, based on:
-// https://github.com/tetramerFreqs/Binning/blob/master/tetramer_freqs_esom.pl
+// Split sequence that is above the min cut-off length to generate fragments
+// such that each fragment falls in the range: window < fragment < 2*window
+// (i.e. 5 to 10 kb).  To achieve this, split each contig into window-sized
+// fragments and add the remainder to the last window-sized fragment.
+// Example: given a 14kb long contig,  generate fragments of size 5kb and
+// 9kb (rather than 5kb, 5kb and 4kb).
+// Add sequence position information to old headers to get new ones.
+
 package main
 
 import (
 	"flag"
 	"fmt"
-	//	"math"
 	"os"
 
 	"github.com/biogo/biogo/alphabet"
@@ -37,50 +40,65 @@ type fs []feat.Feature
 
 func (f fs) Features() []feat.Feature { return []feat.Feature(f) }
 
-var (
-	inf    = flag.String("inf", "test.fna", "input filename")
-	outf   = flag.String("outf", "split_test.fna", "output filename")
-	min    = flag.Int("min", 2500, "minimum sequence length cut-off (bp)")
-	window = flag.Int("window", 5000, "sequence window length (bp)")
-	help   = flag.Bool("help", false, "help prints this message.")
-)
-
 func main() {
+	var (
+		in, out *os.File
+		r       *fasta.Reader
+		w       *fasta.Writer
+		err     error
+		inf     = flag.String("inf", "", "input contig file name to be fragmented. Defaults to stdin.")
+		outf    = flag.String("outf", "", "output file name. Defaults to stdout")
+		min     = flag.Int("min", 2500, "minimum sequence length cut-off (bp)")
+		window  = flag.Int("window", 5000, "sequence window length (bp)")
+		help    = flag.Bool("help", false, "help prints this message.")
+	)
+
 	flag.Parse()
 	if *help {
 		flag.Usage()
 		os.Exit(0)
 	}
-	in, err := os.Open(*inf)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "open input FASTA file: %v.", err)
+
+	t := linear.NewSeq("", nil, alphabet.DNA)
+	if *inf == "" {
+		fmt.Fprintln(os.Stderr, "Reading sequences from stdin.")
+		r = fasta.NewReader(os.Stdin, t)
+	} else if in, err = os.Open(*inf); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 		os.Exit(1)
+	} else {
+		defer in.Close()
+		fmt.Fprintf(os.Stderr, "Reading sequence from `%s'.\n", *inf)
+		r = fasta.NewReader(in, t)
 	}
-	defer in.Close()
-	r := fasta.NewReader(in, linear.NewSeq("", nil, alphabet.DNA))
-	out, err := os.Create(*outf)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "open output FASTA file: %v.", err)
-		os.Exit(1)
+
+	if *outf == "" {
+		fmt.Fprintln(os.Stderr, "Writing output to stdout.")
+		out = os.Stdout
+	} else if out, err = os.Create(*outf); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "Writing output to `%s'.\n", *outf)
 	}
 	defer out.Close()
-	w := fasta.NewWriter(out, 60)
+	w = fasta.NewWriter(out, 60)
+
 	sc := seqio.NewScanner(r)
 	for sc.Next() {
 		next := sc.Seq().(*linear.Seq)
- 		curr := linear.NewSeq("", nil, alphabet.DNA)
+		curr := linear.NewSeq("", nil, alphabet.DNA)
 		startPos, endPos := 0, 0
 		switch {
 		case len(next.Seq) < *min:
 			// discard contigs below cut-off size limit
-			fmt.Printf("%d bp < %d; discard %s\n", len(next.Seq), *min, next.Name())
+			continue
 		case len(next.Seq) >= 2*(*window):
-			//  split contigs and write window-sized fragments
-			remainder := len(next.Seq) % *(window)
-			quotient := len(next.Seq) / *(window)
-			fmt.Printf("l = %d; q = %d; r = %d\n", len(next.Seq), quotient, remainder)
-			for i, j := 0, 0;  i < quotient; i, j = i +1, i * (*window) {
-				startPos = j
+			// example: from 27582bp contig, get all 5000 bp sized fragments till
+			// 20000 position,  leaving the last fragment + remainder (7582)
+			remainder := len(next.Seq) % (*window)
+			quotient := len(next.Seq) / (*window)
+			for i := 0; i < (quotient - 1); i++ {
+				startPos = i * (*window)
 				endPos = startPos + (*window)
 				ff := fs{
 					fe{s: startPos, e: endPos},
@@ -90,29 +108,29 @@ func main() {
 					continue
 				}
 				// add seq locations to header
-				curr.Desc = fmt.Sprintf("%v_%v-%v", next.Desc, startPos, endPos)
+				curr.Desc = fmt.Sprintf("%v_%v-%v", next.Desc, startPos,
+					endPos)
 				if _, err = w.Write(curr); err != nil {
-					fmt.Fprintf(os.Stderr, "failed to write cut fragment :%v", err)
+					fmt.Fprintf(os.Stderr, "failed to write window-sized fragment: %v", err)
 				}
 			}
-			fmt.Printf("Start: %d, End: %d\n", startPos, endPos)
-			// extract and write last remaining fragment
+			// example: write last 7582 fragment (5000 + 2582)
 			ff := fs{
 				fe{s: endPos, e: endPos + (*window) + remainder},
 			}
 			err := sequtils.Stitch(curr, next, ff)
-				if err != nil {
-					continue
-				}
-			// add seq locations to header
-			curr.Desc = fmt.Sprintf("%v_%v-%v", next.Desc, endPos, endPos+(*window)+remainder)
+			if err != nil {
+				continue
+			}
+			curr.Desc = fmt.Sprintf("%v_%v-%v", next.Desc, endPos,
+				endPos+(*window)+remainder)
 			if _, err = w.Write(curr); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to write cut fragment :%v", err)
+				fmt.Fprintf(os.Stderr, "failed to write remainder fragment: %v", err)
 			}
 		default:
 			// contig is of desired size range
 			if _, err = w.Write(next); err != nil {
-				fmt.Fprintf(os.Stderr, "write FASTA record :%v", err)
+				fmt.Fprintf(os.Stderr, "failed to write contig: %v", err)
 			}
 
 		}

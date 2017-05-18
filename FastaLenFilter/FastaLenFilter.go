@@ -7,6 +7,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 
@@ -16,33 +17,47 @@ import (
 	"github.com/biogo/biogo/seq/linear"
 )
 
-var (
-	inf  = flag.String("inf", "test.fna", "input filename")
-	outf = flag.String("outf", "test_gt2500bp.fna", "output filename")
-	min  = flag.Int("minLen", 2500, "minimum sequence length cut-off (bp)")
-	help = flag.Bool("help", false, "help prints this message.")
-)
-
 func main() {
+	var (
+		in, out *os.File
+		r       *fasta.Reader
+		w       *fasta.Writer
+		err     error
+		inf     = flag.String("inf", "", "input contig file name to be fragmented. Defaults to stdin.")
+		outf    = flag.String("outf", "", "output file name. Defaults to stdout")
+		min     = flag.Int("minLen", 2500, "minimum sequence length cut-off (bp)")
+		help    = flag.Bool("help", false, "help prints this message.")
+	)
+
 	flag.Parse()
 	if *help {
 		flag.Usage()
 		os.Exit(0)
 	}
-	in, err := os.Open(*inf)
-	if err != nil {
-		log.Fatalf("open input FASTA file: %v.", err)
+
+	t := linear.NewSeq("", nil, alphabet.DNA)
+	if *inf == "" {
+		fmt.Fprintln(os.Stderr, "Reading sequences from stdin.")
+		r = fasta.NewReader(os.Stdin, t)
+	} else if in, err = os.Open(*inf); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
 		os.Exit(1)
+	} else {
+		defer in.Close()
+		fmt.Fprintf(os.Stderr, "Reading sequence from `%s'.\n", *inf)
+		r = fasta.NewReader(in, t)
 	}
-	defer in.Close()
-	r := fasta.NewReader(in, linear.NewSeq("", nil, alphabet.DNA))
-	out, err := os.Create(*outf)
-	if err != nil {
-		log.Fatalf("open output FASTA file: %v.", err)
-		os.Exit(1)
+
+	if *outf == "" {
+		fmt.Fprintln(os.Stderr, "Writing output to stdout.")
+		out = os.Stdout
+	} else if out, err = os.Create(*outf); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "Writing output to `%s'.\n", *outf)
 	}
-	w := fasta.NewWriter(out, 60)
 	defer out.Close()
+	w = fasta.NewWriter(out, 60)
 	sc := seqio.NewScanner(r)
 	for sc.Next() {
 		s := sc.Seq()
@@ -58,3 +73,4 @@ func main() {
 		log.Fatalf("failed during read: %v", err)
 	}
 }
+
