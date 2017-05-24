@@ -89,7 +89,7 @@ func main() {
 	// sort in descending order of lengths
 	sort.Sort(sort.Reverse(sort.IntSlice(seqlens)))
 	// csum stores the cumulative sequence lengths
-	for csum, i := seqlens[0], 1; i < len(seqlens); i, csum = i+1, seqlens[i]+csum {
+	for  i, csum := 1, seqlens[0]; i < len(seqlens); i, csum = i+1, seqlens[i]+csum {
 		if csum >= (b.Size / 2) {
 			b.N50 = seqlens[i]
 			break
