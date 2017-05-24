@@ -24,7 +24,7 @@ import (
 	"github.com/biogo/biogo/seq/linear"
 )
 
-// binStats contains the basename of the file without any extension and 
+// binStats contains the basename of the file without any extension and
 // other reported statistics in bp (base pairs)
 type binStats struct {
 	Name    string // from input filename (empty if stdin)
@@ -89,12 +89,12 @@ func main() {
 	// sort in descending order of lengths
 	sort.Sort(sort.Reverse(sort.IntSlice(seqlens)))
 	// csum stores the cumulative sequence lengths
-	for  i, csum := 1, seqlens[0]; i < len(seqlens); i++ {
+	for i, csum := 1, seqlens[0]; i < len(seqlens); i++ {
 		if csum >= (b.Size / 2) {
 			b.N50 = seqlens[i]
 			break
 		}
-	csum = seqlens[i] + csum
+		csum = seqlens[i] + csum
 	}
 	b.Avg = b.Size / b.totSeqs
 	fmt.Printf("%+v\n", b)
