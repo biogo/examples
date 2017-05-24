@@ -4,8 +4,8 @@
 
 // Calculate and print sequence statistics from a multi-FASTA DNA sequence
 // file (default stdin), useful for analyzing metrics of microbial genome
-// assemblies or metagenome "bins". It prints: Min, Max, Avg, N50, Assembly
-// size (total length of all sequences)
+// assemblies or metagenome "bins". It prints: the total no. of sequences,
+// Assembly size (total length of all sequences), Min, Max, Avg and N50
 
 package main
 
@@ -86,16 +86,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed during read: %v", err)
 	}
-	// sort descending order of lengths
+	// sort in descending order of lengths
 	sort.Sort(sort.Reverse(sort.IntSlice(seqlens)))
 	// csum stores the cumulative sequence lengths
-	csum := make([]int, len(seqlens))
-	csum[0] = seqlens[0]
-	for i := 1; i < len(seqlens); i++ {
-		csum[i] = seqlens[i] + csum[i-1]
-	}
-	for i, clen := range csum {
-		if clen >= (b.Size / 2) {
+	for csum, i := seqlens[0], 1; i < len(seqlens); i++ {
+		csum = seqlens[i] + csum
+		if csum >= (b.Size / 2) {
 			b.N50 = seqlens[i]
 			break
 		}
