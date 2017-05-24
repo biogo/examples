@@ -36,12 +36,6 @@ type binStats struct {
 	N50     int
 }
 
-type ctglen []int
-
-func (a ctglen) Len() int           { return len(a) }
-func (a ctglen) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ctglen) Less(i, j int) bool { return a[i] < a[j] }
-
 func main() {
 	var (
 		in      *os.File
@@ -71,10 +65,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Reading sequence from `%s'.\n", *inf)
 		r = fasta.NewReader(in, t)
 	}
+
 	sc := seqio.NewScanner(r)
 	b.Name = strings.Split(path.Base(*inf), ".")[0]
-	// min length should be a sufficiently large value
-	b.totSeqs, b.Size, b.Min, b.Max, b.Avg, b.N50 = 0, 0, 1000000000, 0, 0, 0
+	b.Min = 1000000000 // similar: int(^uint(0) >> 1)
 
 	for sc.Next() {
 		s := sc.Seq()
@@ -95,12 +89,13 @@ func main() {
 	// sort descending order of lengths
 	sort.Sort(sort.Reverse(sort.IntSlice(seqlens)))
 	// csum stores the cumulative sequence lengths
-	csum := make(ctglen, len(seqlens))
+	csum := make([]int, len(seqlens))
 	csum[0] = seqlens[0]
 	for i := 1; i < len(seqlens); i++ {
 		csum[i] = seqlens[i] + csum[i-1]
 	}
 	for i, clen := range csum {
+		fmt.Printf("clen = %d, b.Size/2 = %d\n", clen, b.Size/2)
 		if clen >= (b.Size / 2) {
 			b.N50 = seqlens[i]
 			break
