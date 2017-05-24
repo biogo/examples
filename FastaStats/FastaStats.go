@@ -24,8 +24,8 @@ import (
 	"github.com/biogo/biogo/seq/linear"
 )
 
-// binStats contains the statistics of the bin, all sequence lengths are
-// given in base pair
+// binStats contains the basename of the file without any extension and 
+// other reported statistics in bp (base pairs)
 type binStats struct {
 	Name    string // from input filename (empty if stdin)
 	totSeqs int
