@@ -95,7 +95,6 @@ func main() {
 		csum[i] = seqlens[i] + csum[i-1]
 	}
 	for i, clen := range csum {
-		fmt.Printf("clen = %d, b.Size/2 = %d\n", clen, b.Size/2)
 		if clen >= (b.Size / 2) {
 			b.N50 = seqlens[i]
 			break
