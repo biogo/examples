@@ -91,6 +91,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed during read: %v", err)
 	}
+
 	// Sort in descending order of sequence length.
 	sort.Sort(sort.Reverse(sort.IntSlice(seqlens)))
 	// csum stores the cumulative sequence length.
