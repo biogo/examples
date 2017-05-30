@@ -6,7 +6,7 @@
 // multi-FASTA DNA sequence file (default stdin). It is useful for
 // analyzing metrics of microbial genome assemblies or metagenome
 // "bins". It prints: the total no. of sequences, assembly size
-// (total length of all sequences), Min, Max, Avg and N50
+// (total length of all sequences), Min, Max, Avg and N50.
 package main
 
 import (
