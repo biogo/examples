@@ -71,8 +71,9 @@ func main() {
 	// Get the basename of the file and remove the extension.
 	// Example: "/path/to/infile.fasta" -> "infile.fasta" -> "infile"
 	b.Name = strings.Split(path.Base(*inf), ".")[0]
-	// assign b.Min to MaxInt64 (1<<63-1 = 9223372036854775807)
-	// or MaxInt32 (1<<31-1 = 2147483647)
+	// Assign b.Min to the largest possible integer value. 
+	// MaxInt64 (1<<63-1 = 9223372036854775807) or
+	// MaxInt32 (1<<31-1 = 2147483647).
 	b.Min = 1<<63 - 1
 
 	for sc.Next() {
@@ -103,5 +104,6 @@ func main() {
 		csum = seqlens[i] + csum
 	}
 	b.Avg = b.Size / b.totSeqs
+	// Print the statistics of the assembly as key-value pairs.
 	fmt.Printf("%+v\n", b)
 }
