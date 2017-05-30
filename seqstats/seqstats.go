@@ -105,5 +105,3 @@ func main() {
 	b.Avg = b.Size / b.totSeqs
 	fmt.Printf("%+v\n", b)
 }
-
-

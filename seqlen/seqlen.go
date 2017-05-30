@@ -76,4 +76,3 @@ func main() {
 		log.Fatalf("failed during read: %v", err)
 	}
 }
-
