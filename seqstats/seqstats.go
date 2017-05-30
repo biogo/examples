@@ -68,8 +68,12 @@ func main() {
 	}
 
 	sc := seqio.NewScanner(r)
+	// Get the basename of the file and remove the extension.
+	// Example: "/path/to/infile.fasta" -> "infile.fasta" -> "infile"
 	b.Name = strings.Split(path.Base(*inf), ".")[0]
-	b.Min = int(^uint(0)>>1) // 9223372036854775807
+	// assign b.Min to MaxInt64 (1<<63-1 = 9223372036854775807)
+	// or MaxInt32 (1<<31-1 = 2147483647)
+	b.Min = 1<<63 - 1
 
 	for sc.Next() {
 		s := sc.Seq()
@@ -100,4 +104,5 @@ func main() {
 	b.Avg = b.Size / b.totSeqs
 	fmt.Printf("%+v\n", b)
 }
+
 
