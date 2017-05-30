@@ -17,17 +17,20 @@ import (
 )
 
 var (
-	inf     = flag.String("inf", "", "input contig file name to be fragmented. Defaults to stdin.")
-	outf    = flag.String("outf", "", "output file name. Defaults to stdout")
-	min     = flag.Int("minLen", 2500, "minimum sequence length cut-off (bp)")
-	help    = flag.Bool("help", false, "help prints this message.")
-	in, out *os.File
-	r       *fasta.Reader
-	w       *fasta.Writer
-	err     error
+	inf  = flag.String("inf", "", "input contig file name to be fragmented. Defaults to stdin.")
+	outf = flag.String("outf", "", "output file name. Defaults to stdout")
+	min  = flag.Int("minLen", 2500, "minimum sequence length cut-off (bp)")
+	help = flag.Bool("help", false, "help prints this message.")
 )
 
 func main() {
+	var (
+		in, out *os.File
+		r       *fasta.Reader
+		w       *fasta.Writer
+		err     error
+	)
+
 	flag.Parse()
 	if *help {
 		flag.Usage()
