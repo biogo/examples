@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Calculate and print sequence statistics from a multi-FASTA DNA sequence
-// file (default stdin), useful for analyzing metrics of microbial genome
-// assemblies or metagenome "bins". It prints: the total no. of sequences,
-// Assembly size (total length of all sequences), Min, Max, Avg and N50
-
+// seqstats calculates and prints sequence statistics from a
+// multi-FASTA DNA sequence file (default stdin). It is useful for
+// analyzing metrics of microbial genome assemblies or metagenome
+// "bins". It prints: the total no. of sequences, assembly size
+// (total length of all sequences), Min, Max, Avg and N50
 package main
 
 import (
@@ -27,7 +27,7 @@ import (
 // binStats contains the basename of the file without any extension and
 // other reported statistics in bp (base pairs)
 type binStats struct {
-	Name    string // from input filename (empty if stdin)
+	Name    string // from input filename (empty, if stdin)
 	totSeqs int
 	Size    int
 	Min     int
@@ -36,6 +36,11 @@ type binStats struct {
 	N50     int
 }
 
+var (
+	inf  = flag.String("inf", "", "input contig file, defaults to stdin")
+	help = flag.Bool("help", false, "help prints this message")
+)
+
 func main() {
 	var (
 		in      *os.File
@@ -43,8 +48,6 @@ func main() {
 		err     error
 		b       binStats
 		seqlens []int
-		inf     = flag.String("inf", "", "input contig file, defaults to stdin")
-		help    = flag.Bool("help", false, "help prints this message")
 	)
 
 	flag.Parse()
@@ -55,20 +58,18 @@ func main() {
 
 	t := linear.NewSeq("", nil, alphabet.DNA)
 	if *inf == "" {
-		fmt.Fprintln(os.Stderr, "Reading sequences from stdin.")
 		r = fasta.NewReader(os.Stdin, t)
 	} else if in, err = os.Open(*inf); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v.", err)
+		log.Fatalf("failed to open %q: %v", *inf, err)
 		os.Exit(1)
 	} else {
 		defer in.Close()
-		fmt.Fprintf(os.Stderr, "Reading sequence from `%s'.\n", *inf)
 		r = fasta.NewReader(in, t)
 	}
 
 	sc := seqio.NewScanner(r)
 	b.Name = strings.Split(path.Base(*inf), ".")[0]
-	b.Min = 1000000000 // similar: int(^uint(0) >> 1)
+	b.Min = int(^uint(0)>>1) // 9223372036854775807
 
 	for sc.Next() {
 		s := sc.Seq()
@@ -86,9 +87,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed during read: %v", err)
 	}
-	// sort in descending order of lengths
+	// Sort in descending order of sequence length.
 	sort.Sort(sort.Reverse(sort.IntSlice(seqlens)))
-	// csum stores the cumulative sequence lengths
+	// csum stores the cumulative sequence length.
 	for i, csum := 1, seqlens[0]; i < len(seqlens); i++ {
 		if csum >= (b.Size / 2) {
 			b.N50 = seqlens[i]
@@ -99,3 +100,4 @@ func main() {
 	b.Avg = b.Size / b.totSeqs
 	fmt.Printf("%+v\n", b)
 }
+

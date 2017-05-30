@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Convert a multiple-sequence alignment in FASTA to
-// PHYLIP (sequential) format
+// fastatophy converts a multiple-sequence alignment in FASTA to
+// PHYLIP (sequential) format.
+
 package main
 
 import (
@@ -19,64 +20,58 @@ import (
 	"github.com/biogo/biogo/seq/linear"
 )
 
+var (
+	inf  = flag.String("inf", "test.aln", "input FASTA filename")
+	outf = flag.String("outf", "test.phy", "output PHYLIP filename")
+	help = flag.Bool("help", false, "help prints this message.")
+)
+
 func main() {
-	var (
-		inf            = flag.String("inf", "test.aln", "input FASTA filename")
-		outf           = flag.String("outf", "test.phy", "output PHYLIP filename")
-		help           = flag.Bool("help", false, "help prints this message.")
-		totSeq, alnLen int
-	)
 
 	flag.Parse()
 	if *help {
 		flag.Usage()
 		os.Exit(0)
 	}
-	// open input (first pass) to get totSeq and alnLen
-	in, err := os.Open(*inf)
-	if err != nil {
-		log.Fatalf("open FASTA file (1st pass): %v.\n", err)
-		os.Exit(1)
-	}
+
+	in, _ := os.Open(*inf)
 	defer in.Close()
 	r := fasta.NewReader(in, linear.NewSeq("", nil, alphabet.Protein))
-	out, err := os.Create(*outf)
-	if err != nil {
-		log.Fatalf("open PHYLIP file: %v.\n", err)
-		os.Exit(1)
-	}
+
+	out, _ := os.Create(*outf)
 	defer out.Close()
-	totSeq = 0
+
+	var n, alnLen int
+	n = 0
 	sc := seqio.NewScanner(r)
 	for sc.Next() {
 		s := sc.Seq()
 		alnLen = s.Len()
-		totSeq = totSeq + 1
+		n++
 	}
-	alnCounts := fmt.Sprintf("%d %d\n", totSeq, alnLen)
-	io.WriteString(out, alnCounts)
-	// open input (second pass) to read sequences and write to output
-	in, err = os.Open(*inf)
+	err := sc.Error()
 	if err != nil {
-		log.Fatalf("open FASTA file (2nd pass): %v.", err)
-		os.Exit(1)
+		log.Fatalf("failed during read: %v", err)
 	}
-	defer in.Close()
+	fmt.Fprintf(out, "%d %d\n", n, alnLen)
+
+	// Read input FASTA file from start to write sequences to output
+	in.Seek(0, io.SeekStart)
+
 	r = fasta.NewReader(in, linear.NewSeq("", nil, alphabet.Protein))
 	sc = seqio.NewScanner(r)
 	for sc.Next() {
 		s := sc.Seq().(*linear.Seq)
-		alnRow := fmt.Sprintf("%s %v\n", s.Name(), s.Seq)
-		io.WriteString(out, alnRow)
+		fmt.Fprintf(out, "%s %v\n", s.Name(), s.Seq)
 		if s.Len() != alnLen {
-			log.Printf("WARNING: Length of sequence %s is different than %d.\n",
-				s.Name(), alnLen)
+			log.Printf("WARNING: Length of sequence %s is different to %d.\n", s.Name(), alnLen)
 		}
 		if len(s.Name()) > 10 {
-			log.Printf("WARNING: Sequence ID %s is longer than 10 characters.\n",
-				s.Name())
+			log.Printf("WARNING: Sequence ID %s is longer than 10 characters.\n", s.Name())
 		}
 
 	}
 
 }
+
+
