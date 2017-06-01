@@ -73,7 +73,6 @@ func main() {
 	}
 
 	sc := seqio.NewScanner(r)
-	// Example: "/path/to/Aquifex_Ctgs.fasta" -> "Aquifex_Ctgs"
 	b.Name = strings.Split(path.Base(*ctgf), ".")[0]
 	b.Min = MaxInt
 
