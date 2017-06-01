@@ -2,16 +2,28 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// seqsplit splits sequence that is above the min cut-off length to
-// generate fragments such that each fragment falls in the size range:
-// window < fragment < 2*window (i.e. 5 to 10 kb).  To achieve this each
-// contig is split into window-sized fragments and the remainder is
-// added to the last window-sized fragment. Add sequence position
-// information to the contig FASTA header to generate unique new headers
-// for the split sequences.
-
-// Example: given a 14kb long contig, generate fragments of size 5kb
-// and 9kb (rather than 5kb, 5kb and 4kb).
+// seqsplit splits contig sequences that are above a
+// minimum cut-off length to generate fragments such that
+// each fragment falls in the size range:
+// window < fragment < (2*window).
+// This is achieved as follows, calculate:
+// remainder = length % window and
+// quotient = length / window.
+// Slice contig from the start till (window * (quotient-1))
+// position into (quotient-1) fragments each of size
+// window. Slice (last window + remainder) sized fragment
+// from the contig starting from position
+// (window * (quotient-1)) till the end of the
+// contig. Write all fragments to output.
+//
+// Example: Given a window size of 5kb and a contig of
+// size 27582bp, calculate:
+// remainder = 27582 % 5000 = 2582 and
+// quotient = 27582 / 5000 = 5.
+// Slice contig from the start till (5000 * (5-1)) position
+// into (5-1) fragments each of size 5kb. Get the last
+// window+remainder (5000+2582) fragment starting from
+// position 20000 till the end of the contig (27582).
 package main
 
 import (
@@ -93,9 +105,6 @@ func main() {
 			// Discard contigs below the cut-off size limit.
 			continue
 		case len(next.Seq) >= 2*(*window):
-			// For example, split a 27582 bp contig into 5000 bp sized fragments till
-			// the 20000 position, write to output, leaving the last window fragment
-			// and the remainder totaling to 7582 (i.e. 5000 + 2582) bp.
 			remainder := len(next.Seq) % (*window)
 			quotient := len(next.Seq) / (*window)
 			for i := 0; i < (quotient - 1); i++ {
@@ -106,14 +115,15 @@ func main() {
 				if err != nil {
 					panic(err)
 				}
-				// add seq locations to header
+				// The fragment sequences require new, unique FASTA
+				// sequence identifiers. Append the start and end positions
+				// of contig sequence to old identifiers and use them as
+				// FASTA headers for the fragments.
 				curr.Desc = fmt.Sprintf("%v_%v-%v", next.Desc, startPos, endPos)
 				if _, err = w.Write(curr); err != nil {
 					fmt.Fprintf(os.Stderr, "failed to write window-sized fragment: %v", err)
 				}
 			}
-			// Continuing on the above example, write the remaining 7582 (5000 +
-			// 2582) bp to output.
 			ff := fs{fe{s: endPos, e: endPos + (*window) + remainder}}
 			err := sequtils.Stitch(curr, next, ff)
 			if err != nil {
@@ -131,3 +141,4 @@ func main() {
 		}
 	}
 }
+

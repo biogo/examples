@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// seqlen filters sequences that are above a length cut-off.
+// seqlen filters sequences that are above a length
+// cut-off.
 package main
 
 import (
@@ -16,12 +17,6 @@ import (
 	"github.com/biogo/biogo/seq/linear"
 )
 
-// Flags assign input, output file names and minimum length cut-off to their default
-// values and also provide a way to change them easily  in the command-line.
-// An example using flags for file names, with default sequence length cut-off of 2500 bp.
-// seqlen -inf infile.fasta -outf outfile.fasta
-// An example using stdin, stdout, with sequence length cut-off of 200 bp.
-// seqlen < infile.fasta > outfile.fasta -min 200
 var (
 	inf  = flag.String("inf", "", "input contig file name to be fragmented. Defaults to stdin.")
 	outf = flag.String("outf", "", "output file name. Defaults to stdout")

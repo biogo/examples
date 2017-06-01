@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// seqstats calculates and prints sequence statistics from a
-// multi-FASTA DNA sequence file (default stdin). It is useful for
-// analyzing metrics of microbial genome assemblies or metagenome
-// "bins". It prints: the total no. of sequences, assembly size
-// (total length of all sequences), Min, Max, Avg and N50.
+// seqstats calculates and prints sequence statistics from
+// a multi-FASTA DNA sequence file (default stdin). It
+// is useful for analyzing metrics of microbial genome
+// assemblies or metagenome "bins". It prints: the total
+// no. of sequences, assembly size (total length of all
+// sequences), Min, Max, Avg and N50.
+
 package main
 
 import (
@@ -24,8 +26,11 @@ import (
 	"github.com/biogo/biogo/seq/linear"
 )
 
-// binStats contains the basename of the file without any extension and
-// other reported statistics in bp (base pairs)
+const MaxInt = int(^uint(0) >> 1)
+
+// binStats contains the basename of the file without
+// any extension and other reported statistics in bp
+// (base pairs)
 type binStats struct {
 	Name    string // from input filename (empty, if stdin)
 	totSeqs int
@@ -37,7 +42,7 @@ type binStats struct {
 }
 
 var (
-	inf  = flag.String("inf", "", "input contig file, defaults to stdin")
+	ctgf = flag.String("ctgf", "", "input contig file, defaults to stdin")
 	help = flag.Bool("help", false, "help prints this message")
 )
 
@@ -57,10 +62,10 @@ func main() {
 	}
 
 	t := linear.NewSeq("", nil, alphabet.DNA)
-	if *inf == "" {
+	if *ctgf == "" {
 		r = fasta.NewReader(os.Stdin, t)
-	} else if in, err = os.Open(*inf); err != nil {
-		log.Fatalf("failed to open %q: %v", *inf, err)
+	} else if in, err = os.Open(*ctgf); err != nil {
+		log.Fatalf("failed to open %q: %v", *ctgf, err)
 		os.Exit(1)
 	} else {
 		defer in.Close()
@@ -68,13 +73,9 @@ func main() {
 	}
 
 	sc := seqio.NewScanner(r)
-	// Get the basename of the file and remove the extension.
-	// Example: "/path/to/infile.fasta" -> "infile.fasta" -> "infile"
-	b.Name = strings.Split(path.Base(*inf), ".")[0]
-	// Assign b.Min to the largest possible integer value. 
-	// MaxInt64 (1<<63-1 = 9223372036854775807) or
-	// MaxInt32 (1<<31-1 = 2147483647).
-	b.Min = 1<<63 - 1
+	// Example: "/path/to/Aquifex_Ctgs.fasta" -> "Aquifex_Ctgs"
+	b.Name = strings.Split(path.Base(*ctgf), ".")[0]
+	b.Min = MaxInt
 
 	for sc.Next() {
 		s := sc.Seq()
