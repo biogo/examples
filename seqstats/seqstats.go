@@ -41,7 +41,7 @@ type binStats struct {
 }
 
 var (
-	ctgf = flag.String("ctgf", "", "input contig file, defaults to stdin")
+	ctgf = flag.String("in", "", "input contig file, defaults to stdin")
 	help = flag.Bool("help", false, "help prints this message")
 )
 

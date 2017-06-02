@@ -5,10 +5,10 @@
 // seqsplit splits contig sequences that are above a
 // minimum cut-off length to generate fragments such that
 // each fragment falls in the size range:
-// window < fragment < (2*window).
+//  window < fragment < (2*window).
 // This is achieved as follows, calculate:
-// remainder = length % window and
-// quotient = length / window.
+//  remainder = length % window and
+//  quotient = length / window.
 // Slice contig from the start till (window * (quotient-1))
 // position into (quotient-1) fragments each of size
 // window. Slice (last window + remainder) sized fragment
@@ -18,8 +18,8 @@
 //
 // Example: Given a window size of 5kb and a contig of
 // size 27582bp, calculate:
-// remainder = 27582 % 5000 = 2582 and
-// quotient = 27582 / 5000 = 5.
+//  remainder = 27582 % 5000 = 2582 and
+//  quotient = 27582 / 5000 = 5.
 // Slice contig from the start till (5000 * (5-1)) position
 // into (5-1) fragments each of size 5kb. Get the last
 // window+remainder (5000+2582) fragment starting from
@@ -56,8 +56,8 @@ type fs []feat.Feature
 func (f fs) Features() []feat.Feature { return []feat.Feature(f) }
 
 var (
-	inf    = flag.String("inf", "", "input contig file name to be fragmented. Defaults to stdin.")
-	outf   = flag.String("outf", "", "output file name. Defaults to stdout")
+	inf    = flag.String("in", "", "input contig file name to be fragmented. Defaults to stdin.")
+	outf   = flag.String("out", "", "output file name. Defaults to stdout")
 	min    = flag.Int("min", 2500, "minimum sequence length cut-off (bp)")
 	window = flag.Int("window", 5000, "sequence window length (bp)")
 	help   = flag.Bool("help", false, "help prints this message.")

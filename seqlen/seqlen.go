@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	inf  = flag.String("inf", "", "input contig file name to be fragmented. Defaults to stdin.")
-	outf = flag.String("outf", "", "output file name. Defaults to stdout")
+	inf  = flag.String("in", "", "input contig file name to be fragmented. Defaults to stdin.")
+	outf = flag.String("out", "", "output file name. Defaults to stdout")
 	min  = flag.Int("min", 2500, "minimum sequence length cut-off (bp)")
 	help = flag.Bool("help", false, "help prints this message.")
 )

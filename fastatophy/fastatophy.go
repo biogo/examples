@@ -19,19 +19,9 @@ import (
 	"github.com/biogo/biogo/seq/linear"
 )
 
-// padding returns requested number of spaces as a
-// concatenated string.
-func padding(n int) (spaces string) {
-	space := " "
-	for i := 0; i < n; i++ {
-		spaces += space
-	}
-	return spaces
-}
-
 var (
-	inf  = flag.String("inf", "test.aln", "input FASTA filename")
-	outf = flag.String("outf", "test.phy", "output PHYLIP filename")
+	inf  = flag.String("in", "test.aln", "input FASTA filename")
+	outf = flag.String("out", "test.phy", "output PHYLIP filename")
 	help = flag.Bool("help", false, "help prints this message")
 )
 
@@ -80,7 +70,8 @@ func main() {
 
 	// Reinitialize to read from the start of the FASTA file
 	// and write the alignment section to the PHYLIP file.
-	if _, err := in.Seek(0, io.SeekStart); err != nil {
+	_, err = in.Seek(0, io.SeekStart)
+	if err != nil {
 		log.Fatalf("seek failed: %v", err)
 	}
 	r = fasta.NewReader(in, linear.NewSeq("", nil, alphabet.Protein))
@@ -100,7 +91,8 @@ func main() {
 			strictName = s.Name()[:10]
 			log.Printf("Identifier: %s was truncated to 10 characters\n", s.Name())
 		} else {
-			strictName = s.Name() + padding(10-len(s.Name()))
+			const padding = "          " // Ten spaces.
+			strictName = s.Name() + padding[:10-len(s.Name())]
 		}
 		fmt.Fprintf(out, "%s %v\n", strictName, s.Seq)
 	}
