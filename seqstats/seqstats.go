@@ -31,7 +31,7 @@ const MaxInt = int(^uint(0) >> 1)
 // any extension and other reported statistics in bp
 // (base pairs)
 type binStats struct {
-	Name    string // from input filename (empty, if stdin)
+	Name    string // From input filename (empty, if stdin).
 	totSeqs int
 	Size    int
 	Min     int
