@@ -5,7 +5,7 @@
 // seqsplit splits contig sequences that are above a
 // minimum cut-off length to generate fragments such that
 // each fragment falls in the size range:
-//  window < fragment < (2*window).
+//  window ≤ fragment < (2*window).
 // This is achieved as follows, calculate:
 //  remainder = length % window and
 //  quotient = length / window.
