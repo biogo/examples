@@ -29,7 +29,7 @@ const MaxInt = int(^uint(0) >> 1)
 
 // binStats contains the basename of the file without
 // any extension and other reported statistics in bp
-// (base pairs)
+// (base pairs).
 type binStats struct {
 	Name    string // From input filename (empty, if stdin).
 	totSeqs int
