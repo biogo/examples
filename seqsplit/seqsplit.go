@@ -57,7 +57,7 @@ func (f fs) Features() []feat.Feature { return []feat.Feature(f) }
 
 var (
 	inf    = flag.String("in", "", "input contig file name to be fragmented. Defaults to stdin.")
-	outf   = flag.String("out", "", "output file name. Defaults to stdout")
+	outf   = flag.String("out", "", "output file name. Defaults to stdout.")
 	min    = flag.Int("min", 2500, "minimum sequence length cut-off (bp)")
 	window = flag.Int("window", 5000, "sequence window length (bp)")
 	help   = flag.Bool("help", false, "help prints this message.")
@@ -139,5 +139,9 @@ func main() {
 				fmt.Fprintf(os.Stderr, "failed to write contig: %v", err)
 			}
 		}
+	}
+	err = sc.Error()
+	if err != nil {
+		log.Fatalf("failed during read: %v", err)
 	}
 }
