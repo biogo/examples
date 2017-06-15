@@ -26,18 +26,15 @@ var (
 )
 
 func main() {
-	var (
-		in, out *os.File
-		r       *fasta.Reader
-		err     error
-	)
-
 	flag.Parse()
 	if *help {
 		flag.Usage()
 		os.Exit(0)
 	}
 
+	var in *os.File
+	var r *fasta.Reader
+	var err error
 	t := linear.NewSeq("", nil, alphabet.Protein)
 	if *inf == "" {
 		flag.Usage()
@@ -48,6 +45,7 @@ func main() {
 		r = fasta.NewReader(in, t)
 	}
 
+	var out *os.File
 	if *outf == "" {
 		flag.Usage()
 	} else if out, err = os.Create(*outf); err != nil {
@@ -58,10 +56,9 @@ func main() {
 
 	// Read all FASTA records to get total number of sequences
 	// (n) and length of each sequence (seqlens).
-	var (
-		n       int
-		seqlens []int
-	)
+	var n int
+	var seqlens []int
+
 	sc := seqio.NewScanner(r)
 	for sc.Next() {
 		s := sc.Seq()
