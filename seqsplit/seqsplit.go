@@ -64,19 +64,15 @@ var (
 )
 
 func main() {
-	var (
-		in, out *os.File
-		r       *fasta.Reader
-		w       *fasta.Writer
-		err     error
-	)
-
 	flag.Parse()
 	if *help {
 		flag.Usage()
 		os.Exit(0)
 	}
 
+	var in *os.File
+	var err error
+	var r *fasta.Reader
 	t := linear.NewSeq("", nil, alphabet.DNA)
 	if *inf == "" {
 		r = fasta.NewReader(os.Stdin, t)
@@ -87,6 +83,7 @@ func main() {
 		r = fasta.NewReader(in, t)
 	}
 
+	var out *os.File
 	if *outf == "" {
 		out = os.Stdout
 	} else if out, err = os.Create(*outf); err != nil {
@@ -94,7 +91,7 @@ func main() {
 	}
 	defer out.Close()
 
-	w = fasta.NewWriter(out, 60)
+	w := fasta.NewWriter(out, 60)
 	sc := seqio.NewScanner(r)
 	for sc.Next() {
 		next := sc.Seq().(*linear.Seq)
@@ -119,7 +116,7 @@ func main() {
 				// sequence identifiers. Append the start and end positions
 				// of contig sequence to old identifiers and use them as
 				// FASTA headers for the fragments.
-				curr.Desc = fmt.Sprintf("%v_%v-%v", next.Desc, startPos, endPos)
+				curr.Desc = fmt.Sprintf("%v_%v-%v", next.Name(), startPos, endPos)
 				if _, err = w.Write(curr); err != nil {
 					fmt.Fprintf(os.Stderr, "failed to write window-sized fragment: %v", err)
 				}
@@ -129,7 +126,7 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			curr.Desc = fmt.Sprintf("%v_%v-%v", next.Desc, endPos, endPos+(*window)+remainder)
+			curr.Desc = fmt.Sprintf("%v_%v-%v", next.Name(), endPos, endPos+(*window)+remainder)
 			if _, err = w.Write(curr); err != nil {
 				fmt.Fprintf(os.Stderr, "failed to write remainder fragment: %v", err)
 			}

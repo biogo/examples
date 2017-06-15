@@ -27,8 +27,9 @@ var (
 
 func main() {
 	var (
-		n, alnLen  int
-		strictName string
+		in, out *os.File
+		r       *fasta.Reader
+		err     error
 	)
 
 	flag.Parse()
@@ -37,36 +38,51 @@ func main() {
 		os.Exit(0)
 	}
 
-	in, err := os.Open(*inf)
-	if err != nil {
+	t := linear.NewSeq("", nil, alphabet.Protein)
+	if *inf == "" {
+		flag.Usage()
+	} else if in, err = os.Open(*inf); err != nil {
 		log.Fatalf("failed to open FASTA file: %v", err)
+	} else {
+		defer in.Close()
+		r = fasta.NewReader(in, t)
 	}
-	defer in.Close()
-	r := fasta.NewReader(in, linear.NewSeq("", nil, alphabet.Protein))
 
-	out, err := os.Create(*outf)
-	if err != nil {
+	if *outf == "" {
+		flag.Usage()
+	} else if out, err = os.Create(*outf); err != nil {
 		log.Fatalf("failed to open PHYLIP file: %v", err)
+	} else {
+		defer out.Close()
 	}
-	defer out.Close()
 
 	// Read all FASTA records to get total number of sequences
-	// (n) and length of each sequence. alnLen stores the
-	// sequence length of the last record.
-	n = 0
+	// (n) and length of each sequence (seqlens).
+	var (
+		n       int
+		seqlens []int
+	)
 	sc := seqio.NewScanner(r)
 	for sc.Next() {
 		s := sc.Seq()
-		alnLen = s.Len()
+		seqlens = append(seqlens, s.Len())
+		// Assert that each sequence in the multiple-sequence
+		// alignment is of equal length.
+		if n > 0 {
+			if s.Len() != seqlens[n-1] {
+				log.Printf("%s length (%d) differs from previous sequence (%d) \n", s.Name(), s.Len(), seqlens[n-1])
+			}
+		}
 		n++
 	}
 	err = sc.Error()
 	if err != nil {
-		log.Fatalf("failed during read: %v", err)
+		log.Fatalf("failed during first read: %v", err)
 	}
+
 	// Write the header section consisting of dimensions of
 	// the alignment to the PHYLIP file.
-	fmt.Fprintf(out, "%d %d\n", n, alnLen)
+	fmt.Fprintf(out, "%d %d\n", n, seqlens[n-1])
 
 	// Reinitialize to read from the start of the FASTA file
 	// and write the alignment section to the PHYLIP file.
@@ -74,15 +90,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("seek failed: %v", err)
 	}
-	r = fasta.NewReader(in, linear.NewSeq("", nil, alphabet.Protein))
+	r = fasta.NewReader(in, t)
 	sc = seqio.NewScanner(r)
+	var strictName string
 	for sc.Next() {
 		s := sc.Seq().(*linear.Seq)
-		// Assert that each sequence in the multiple-sequence
-		// alignment is of equal length.
-		if s.Len() != alnLen {
-			log.Printf("Identifier: %s length differs from %d\n", s.Name(), alnLen)
-		}
 		// Sequence identifiers must be exactly 10 characters in
 		// "strict" PHYLIP format, truncate to first 10 characters
 		// if identifiers are longer, otherwise pad them with
@@ -95,5 +107,9 @@ func main() {
 			strictName = s.Name() + padding[:10-len(s.Name())]
 		}
 		fmt.Fprintf(out, "%s %v\n", strictName, s.Seq)
+	}
+	err = sc.Error()
+	if err != nil {
+		log.Fatalf("failed during second read: %v", err)
 	}
 }

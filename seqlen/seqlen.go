@@ -25,19 +25,15 @@ var (
 )
 
 func main() {
-	var (
-		in, out *os.File
-		r       *fasta.Reader
-		w       *fasta.Writer
-		err     error
-	)
-
 	flag.Parse()
 	if *help {
 		flag.Usage()
 		os.Exit(0)
 	}
 
+	var in *os.File
+	var err error
+	var r *fasta.Reader
 	t := linear.NewSeq("", nil, alphabet.DNA)
 	if *inf == "" {
 		r = fasta.NewReader(os.Stdin, t)
@@ -48,6 +44,7 @@ func main() {
 		r = fasta.NewReader(in, t)
 	}
 
+	var out *os.File
 	if *outf == "" {
 		out = os.Stdout
 	} else if out, err = os.Create(*outf); err != nil {
@@ -55,7 +52,7 @@ func main() {
 	}
 	defer out.Close()
 
-	w = fasta.NewWriter(out, 60)
+	w := fasta.NewWriter(out, 60)
 	sc := seqio.NewScanner(r)
 	for sc.Next() {
 		s := sc.Seq()
