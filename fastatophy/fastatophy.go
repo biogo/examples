@@ -42,8 +42,6 @@ func main() {
 		log.Fatalf("failed to open FASTA file %q: %v", *inf, err)
 	}
 	defer in.Close()
-	t := linear.NewSeq("", nil, alphabet.Protein)
-	r := fasta.NewReader(in, t)
 
 	out, err := os.Create(*outf)
 	if err != nil {
@@ -55,6 +53,8 @@ func main() {
 	// (n) and length of each sequence (seqlens).
 	var n int
 	var seqlens []int
+	t := linear.NewSeq("", nil, alphabet.Protein)
+	r := fasta.NewReader(in, t)
 	sc := seqio.NewScanner(r)
 	for sc.Next() {
 		s := sc.Seq()
