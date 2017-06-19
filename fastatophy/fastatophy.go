@@ -33,7 +33,7 @@ func main() {
 	}
 
 	t := linear.NewSeq("", nil, alphabet.Protein)
-	if *inf == "" {
+	if *inf == "" || *outf == "" {
 		flag.Usage()
 		os.Exit(1)
 	} 
@@ -49,13 +49,11 @@ func main() {
 	r = fasta.NewReader(in, t)
 
 	var out *os.File
-	if *outf == "" {
-		flag.Usage()
-	} else if out, err = os.Create(*outf); err != nil {
+	out, err = os.Create(*outf)
+	if err != nil {
 		log.Fatalf("failed to open PHYLIP file: %v", err)
-	} else {
-		defer out.Close()
 	}
+	defer out.Close()
 
 	// Read all FASTA records to get total number of sequences
 	// (n) and length of each sequence (seqlens).
