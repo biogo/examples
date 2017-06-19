@@ -32,18 +32,21 @@ func main() {
 		os.Exit(0)
 	}
 
-	var in *os.File
-	var r *fasta.Reader
-	var err error
 	t := linear.NewSeq("", nil, alphabet.Protein)
 	if *inf == "" {
 		flag.Usage()
-	} else if in, err = os.Open(*inf); err != nil {
+		os.Exit(1)
+	} 
+	
+	var in *os.File
+	var r *fasta.Reader
+	var err error
+	in, err = os.Open(*inf)
+	if err != nil {
 		log.Fatalf("failed to open FASTA file: %v", err)
-	} else {
-		defer in.Close()
-		r = fasta.NewReader(in, t)
 	}
+	defer in.Close()
+	r = fasta.NewReader(in, t)
 
 	var out *os.File
 	if *outf == "" {
