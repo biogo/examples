@@ -39,7 +39,7 @@ func main() {
 	
 	in, err := os.Open(*inf)
 	if err != nil {
-		log.Fatalf("failed to open FASTA file: %v", err)
+		log.Fatalf("failed to open FASTA file %q: %v", *inf, err)
 	}
 	defer in.Close()
 	t := linear.NewSeq("", nil, alphabet.Protein)
@@ -47,7 +47,7 @@ func main() {
 
 	out, err := os.Create(*outf)
 	if err != nil {
-		log.Fatalf("failed to open PHYLIP file: %v", err)
+		log.Fatalf("failed to open PHYLIP file %q: %v", *outf, err)
 	}
 	defer out.Close()
 
