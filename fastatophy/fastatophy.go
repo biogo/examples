@@ -32,24 +32,20 @@ func main() {
 		os.Exit(0)
 	}
 
-	t := linear.NewSeq("", nil, alphabet.Protein)
 	if *inf == "" || *outf == "" {
 		flag.Usage()
 		os.Exit(1)
 	} 
 	
-	var in *os.File
-	var r *fasta.Reader
-	var err error
-	in, err = os.Open(*inf)
+	in, err := os.Open(*inf)
 	if err != nil {
 		log.Fatalf("failed to open FASTA file: %v", err)
 	}
 	defer in.Close()
-	r = fasta.NewReader(in, t)
+	t := linear.NewSeq("", nil, alphabet.Protein)
+	r := fasta.NewReader(in, t)
 
-	var out *os.File
-	out, err = os.Create(*outf)
+	out, err := os.Create(*outf)
 	if err != nil {
 		log.Fatalf("failed to open PHYLIP file: %v", err)
 	}
@@ -59,7 +55,6 @@ func main() {
 	// (n) and length of each sequence (seqlens).
 	var n int
 	var seqlens []int
-
 	sc := seqio.NewScanner(r)
 	for sc.Next() {
 		s := sc.Seq()
