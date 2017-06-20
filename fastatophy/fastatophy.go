@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	inf  = flag.String("in", "", "input FASTA filename")
-	outf = flag.String("out", "", "output PHYLIP filename")
+	inf  = flag.String("in", "", "input FASTA filename (required)")
+	outf = flag.String("out", "", "output PHYLIP filename (required)")
 	help = flag.Bool("help", false, "help prints this message")
 )
 
