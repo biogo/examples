@@ -74,6 +74,7 @@ func main() {
 	sc := seqio.NewScanner(r)
 	b.name = strings.TrimSuffix(filepath.Base(*ctgf), filepath.Ext(*ctgf))
 	b.min = MaxInt
+
 	for sc.Next() {
 		s := sc.Seq()
 		seqstr = s.(*linear.Seq).Seq.String()
