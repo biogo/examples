@@ -68,7 +68,7 @@ func main() {
 	}
 
 	var b binStats
-	var ctr = map[string]int{"A": 0, "T": 0, "G": 0, "C": 0}
+	var ctr = map[string]int{"G": 0, "C": 0}
 	var seqlens []int
 	var seqstr string
 	sc := seqio.NewScanner(r)
@@ -107,7 +107,7 @@ func main() {
 	}
 
 	b.avg = float64(b.size) / float64(b.totSeqs)
-	b.perGC = float64(ctr["G"]+ctr["C"]) / float64(ctr["A"]+ctr["T"]+ctr["G"]+ctr["C"]) * 100
+	b.perGC = float64(ctr["G"]+ctr["C"]) / float64(b.size) * 100
 	// Print the statistics of the assembly as key:value pairs.
 	fmt.Printf("%+v\n", b)
 }
