@@ -105,7 +105,6 @@ func main() {
 		}
 		csum = seqlens[i] + csum
 	}
-
 	b.avg = float64(b.size) / float64(b.totSeqs)
 	b.perGC = float64(ctr["G"]+ctr["C"]) / float64(b.size) * 100
 	// Print the statistics of the assembly as key:value pairs.
