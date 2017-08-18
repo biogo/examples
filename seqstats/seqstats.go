@@ -68,18 +68,16 @@ func main() {
 	}
 
 	var b binStats
-	var ctr = map[string]int{"G": 0, "C": 0}
+	var ctr [256]int
 	var seqlens []int
-	var seqstr string
 	sc := seqio.NewScanner(r)
 	b.name = strings.TrimSuffix(filepath.Base(*ctgf), filepath.Ext(*ctgf))
 	b.min = MaxInt
 
 	for sc.Next() {
 		s := sc.Seq()
-		seqstr = s.(*linear.Seq).Seq.String()
-		for k := range ctr {
-			ctr[k] += strings.Count(seqstr, k)
+		for _, l := range s.(*linear.Seq).Seq {
+			ctr[l|' ']++ // Count lowercased letter.
 		}
 		b.totSeqs++
 		b.size += s.Len()
@@ -107,7 +105,7 @@ func main() {
 		csum = seqlens[i] + csum
 	}
 	b.avg = float64(b.size) / float64(b.totSeqs)
-	b.perGC = float64(ctr["G"]+ctr["C"]) / float64(b.size) * 100
+	b.perGC = float64(ctr['g']+ctr['c']) / float64(ctr['a']+ctr['t']+ctr['g']+ctr['c']) * 100
 	// Print the statistics of the assembly as key:value pairs.
 	fmt.Printf("%+v\n", b)
 }
