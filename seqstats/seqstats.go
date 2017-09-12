@@ -7,7 +7,7 @@
 // is useful for analyzing metrics of microbial genome
 // assemblies or metagenome "bins". It prints: the total
 // no. of sequences, assembly size (total length of all
-// sequences), Min, Max, Avg and N50.
+// sequences), Min, Max, Avg, N50 and G+C ratio.
 package main
 
 import (
@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -38,6 +38,7 @@ type binStats struct {
 	max     int
 	avg     float64
 	n50     int
+	perGC   float64
 }
 
 var (
@@ -67,13 +68,17 @@ func main() {
 	}
 
 	var b binStats
+	var ctr [256]int
 	var seqlens []int
 	sc := seqio.NewScanner(r)
-	b.name = strings.Split(path.Base(*ctgf), ".")[0]
+	b.name = strings.TrimSuffix(filepath.Base(*ctgf), filepath.Ext(*ctgf))
 	b.min = MaxInt
 
 	for sc.Next() {
 		s := sc.Seq()
+		for _, l := range s.(*linear.Seq).Seq {
+			ctr[l|' ']++ // Count lowercased letter.
+		}
 		b.totSeqs++
 		b.size += s.Len()
 		seqlens = append(seqlens, s.Len())
@@ -100,6 +105,7 @@ func main() {
 		csum = seqlens[i] + csum
 	}
 	b.avg = float64(b.size) / float64(b.totSeqs)
-	// Print the statistics of the assembly as key-value pairs.
+	b.perGC = float64(ctr['g']+ctr['c']) / float64(ctr['a']+ctr['t']+ctr['g']+ctr['c']) * 100
+	// Print the statistics of the assembly as key:value pairs.
 	fmt.Printf("%+v\n", b)
 }
