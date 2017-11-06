@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build ignore
-
 // matrix runs a set of sequence segments (possibly chromosomes) through krisha
 // performing self alignment on the diagonal and target/query alignment in the
 // upper triangle.
@@ -18,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -60,8 +59,8 @@ func done() int32 {
 }
 
 func main() {
+	kflags := flag.String("krishnaflags", "-tmp=/scratch -threads=2 -log", "Quoted set of flags to pass to krishna child processes.")
 	threads := flag.Int("threads", 6, "Number of concurrent krishna instances to run.")
-	workdir := flag.String("workdir", "/scratch", "Working directory.")
 	flag.Parse()
 
 	limit = make(chan struct{}, *threads)
@@ -73,18 +72,18 @@ func main() {
 	t := (len(files)*len(files) + len(files)) / 2
 	for _, f := range files {
 		acquire()
-		go runSelf(t, f, *workdir)
+		go runSelf(t, f, krishnaflags)
 	}
 	for i := range files[1:] {
 		for j := range files[i : len(files)-1] {
 			acquire()
-			go runPair(t, files[i], files[j+i+1], *workdir)
+			go runPair(t, files[i], files[j+i+1], krishnaflags)
 		}
 	}
 	wg.Wait()
 }
 
-func runSelf(t int, target, workdir string) {
+func runSelf(t int, target, kflags string) {
 	b := &bytes.Buffer{}
 	defer release(b)
 
@@ -99,7 +98,7 @@ func runSelf(t int, target, workdir string) {
 		return
 	}
 
-	cmd := exec.Command(krishna, "-tmp="+workdir, "-threads=2", "-traps", "-log", "-target="+target, "-self", "-out="+outfile)
+	cmd := exec.Command(krishna, append(strings.Fields(kflags), "-target="+target, "-self", "-out="+outfile)...)
 	cmd.Stderr = b
 	err := cmd.Run()
 	if err != nil {
@@ -110,7 +109,7 @@ func runSelf(t int, target, workdir string) {
 	}
 }
 
-func runPair(t int, target, query, workdir string) {
+func runPair(t int, target, query, kflags string) {
 	b := &bytes.Buffer{}
 	defer release(b)
 
@@ -129,7 +128,7 @@ func runPair(t int, target, query, workdir string) {
 		return
 	}
 
-	cmd := exec.Command(krishna, "-tmp="+workdir, "-threads=2", "-traps", "-log", "-target="+target, "-query="+query, "-out="+outfile)
+	cmd := exec.Command(krishna, append(strings.Fields(kflags), "-target="+target, "-query="+query, "-out="+outfile)...)
 	cmd.Stderr = b
 	err := cmd.Run()
 	if err != nil {
