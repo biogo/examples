@@ -19,18 +19,17 @@ import (
 	"sort"
 	"sync"
 
-	"golang.org/x/tools/container/intsets"
-
 	"github.com/biogo/biogo/io/featio/gff"
 	"github.com/biogo/biogo/seq"
 	"github.com/biogo/store/step"
 
-	"github.com/gonum/graph"
-	"github.com/gonum/graph/community"
-	"github.com/gonum/graph/encoding/dot"
-	"github.com/gonum/graph/network"
-	"github.com/gonum/graph/simple"
-	"github.com/gonum/graph/topo"
+	"gonum.org/v1/gonum/graph"
+	"gonum.org/v1/gonum/graph/community"
+	"gonum.org/v1/gonum/graph/encoding"
+	"gonum.org/v1/gonum/graph/encoding/dot"
+	"gonum.org/v1/gonum/graph/network"
+	"gonum.org/v1/gonum/graph/simple"
+	"gonum.org/v1/gonum/graph/topo"
 )
 
 var (
@@ -74,7 +73,7 @@ func main() {
 		if *minFam != 0 && len(v) < *minFam {
 			continue
 		}
-		fam := family{id: i, members: v, length: length(v)}
+		fam := family{id: int64(i), members: v, length: length(v)}
 
 		families = append(families, fam)
 	}
@@ -86,9 +85,9 @@ func main() {
 	const minSubClique = 3
 	grps := groups(families, edges, *resolution, minSubClique, *cliques)
 
-	clusterIdentity := make(map[int]int)
-	cliqueIdentity := make(map[int][]int)
-	cliqueMemberships := make(map[int]int)
+	clusterIdentity := make(map[int64]int64)
+	cliqueIdentity := make(map[int64][]int64)
+	cliqueMemberships := make(map[int64]int64)
 
 	for _, g := range grps {
 		// Collate counts for clique memberships. We cannot do
@@ -108,7 +107,7 @@ func main() {
 			clusterIdentity[m.id] = g.pageRank[0].id
 			if g.isClique {
 				cliqueMemberships[m.id]++
-				cliqueIdentity[m.id] = []int{g.pageRank[0].id}
+				cliqueIdentity[m.id] = []int64{g.pageRank[0].id}
 			}
 		}
 		if len(g.cliques) != 0 {
@@ -116,11 +115,11 @@ func main() {
 		}
 		for _, clique := range g.cliques {
 			// Make PageRanked version of clique.
-			cliqueHas := make(map[int]bool)
+			cliqueHas := make(map[int64]bool)
 			for _, m := range clique {
 				cliqueHas[m] = true
 			}
-			clique = make([]int, 0, len(clique))
+			clique = make([]int64, 0, len(clique))
 			for _, m := range g.pageRank {
 				if cliqueHas[m.id] {
 					clique = append(clique, m.id)
@@ -206,7 +205,7 @@ type feature struct {
 }
 
 type family struct {
-	id      int
+	id      int64
 	members []feature
 	length  int
 }
@@ -218,19 +217,19 @@ func (f byMembers) Less(i, j int) bool { return len(f[i].members) > len(f[j].mem
 func (f byMembers) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 
 type node struct {
-	id      int
-	cluster int
+	id      int64
+	cluster int64
 	members int
 }
 
-var _ dot.Attributer = node{}
+var _ encoding.Attributer = node{}
 
-func (n node) ID() int { return n.id }
-func (n node) DOTAttributes() []dot.Attribute {
+func (n node) ID() int64 { return n.id }
+func (n node) Attributes() []encoding.Attribute {
 	if n.cluster == -1 {
-		return []dot.Attribute{{"members", fmt.Sprint(n.members)}}
+		return []encoding.Attribute{{"members", fmt.Sprint(n.members)}}
 	}
-	return []dot.Attribute{
+	return []encoding.Attribute{
 		{"cluster", fmt.Sprint(n.cluster)},
 		{"members", fmt.Sprint(n.members)},
 	}
@@ -241,13 +240,13 @@ type edge struct {
 	weight   float64
 }
 
-var _ dot.Attributer = edge{}
+var _ encoding.Attributer = edge{}
 
 func (e edge) From() graph.Node { return e.from }
 func (e edge) To() graph.Node   { return e.to }
 func (e edge) Weight() float64  { return e.weight }
-func (e edge) DOTAttributes() []dot.Attribute {
-	return []dot.Attribute{{"weight", fmt.Sprint(e.weight)}}
+func (e edge) Attributes() []encoding.Attribute {
+	return []encoding.Attribute{{"weight", fmt.Sprint(e.weight)}}
 }
 
 // stepBool is a bool type satisfying the step.Equaler interface.
@@ -425,7 +424,7 @@ func intersection(a, b family) (upper, lower float64) {
 	return upper, lower
 }
 
-func dotted(id []int) string {
+func dotted(id []int64) string {
 	var buf bytes.Buffer
 	for i, e := range id {
 		if i != 0 {
@@ -437,14 +436,14 @@ func dotted(id []int) string {
 }
 
 func writeDOT(file string, edges []edge) {
-	g := simple.NewDirectedGraph(0, math.Inf(1))
+	g := simple.NewWeightedDirectedGraph(0, math.Inf(1))
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
 			if !g.Has(n) {
 				g.AddNode(n)
 			}
 		}
-		g.SetEdge(e)
+		g.SetWeightedEdge(e)
 	}
 
 	f, err := os.Create(*dotOut)
@@ -467,27 +466,27 @@ func writeDOT(file string, edges []edge) {
 type group struct {
 	members  []family
 	isClique bool
-	cliques  [][]int
+	cliques  [][]int64
 	pageRank ranks
 }
 
 func groups(fams []family, edges []edge, resolution float64, minSubClique int, cliques bool) []group {
-	g := simple.NewDirectedGraph(0, 0)
+	g := simple.NewWeightedDirectedGraph(0, 0)
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
 			if !g.Has(n) {
 				g.AddNode(n)
 			}
 		}
-		g.SetEdge(e)
+		g.SetWeightedEdge(e)
 	}
 
-	familyIndexOf := make(map[int]int, len(fams))
+	familyIndexOf := make(map[int64]int, len(fams))
 	for i, f := range fams {
 		familyIndexOf[f.id] = i
 	}
 	var grps []group
-	r := community.Louvain(graph.Undirect{G: g}, resolution, rand.New(rand.NewSource(1)))
+	r := community.Modularize(graph.Undirect{G: g}, resolution, rand.New(rand.NewSource(1)))
 	for _, c := range r.Communities() {
 		var grp group
 		for _, n := range c {
@@ -508,12 +507,32 @@ func groups(fams []family, edges []edge, resolution float64, minSubClique int, c
 	return grps
 }
 
-func edgesIn(g graph.Directed, n []graph.Node) int {
-	var in intsets.Sparse
-	for _, u := range n {
-		in.Insert(u.ID())
+type intset map[int64]struct{}
+
+func (s intset) add(i int64) {
+	s[i] = struct{}{}
+}
+
+func (s intset) has(i int64) bool {
+	_, ok := s[i]
+	return ok
+}
+
+type twoset map[[2]int64]struct{}
+
+func (s twoset) add(i, j int64) {
+	if i > j {
+		i, j = j, i
 	}
-	seen := make(map[[2]int]struct{})
+	s[[2]int64{i, j}] = struct{}{}
+}
+
+func edgesIn(g graph.Directed, n []graph.Node) int {
+	in := make(intset)
+	for _, u := range n {
+		in.add(u.ID())
+	}
+	seen := make(twoset)
 	// We could use graph.Undirect here, but the
 	// overhead increases and we don't actually
 	// need all the nodes, just the edges.
@@ -521,40 +540,33 @@ func edgesIn(g graph.Directed, n []graph.Node) int {
 		uid := u.ID()
 		for _, v := range g.From(u) {
 			vid := v.ID()
-			if !in.Has(vid) {
+			if !in.has(vid) {
 				continue
 			}
-			if uid > vid {
-				uid, vid = vid, uid
-			}
-			seen[[2]int{uid, vid}] = struct{}{}
+			seen.add(uid, vid)
 		}
 		for _, v := range g.To(u) {
 			vid := v.ID()
-			if !in.Has(vid) {
+			if !in.has(vid) {
 				continue
 			}
-			if uid > vid {
-				uid, vid = vid, uid
-			}
-			seen[[2]int{uid, vid}] = struct{}{}
+			seen.add(uid, vid)
 		}
 	}
 	return len(seen)
 }
 
-func cliquesIn(grp group, edges []edge, min int) [][]int {
-	isMember := make(map[int]struct{})
+func cliquesIn(grp group, edges []edge, min int) [][]int64 {
+	members := make(intset)
 	for _, fam := range grp.members {
-		isMember[fam.id] = struct{}{}
+		members.add(fam.id)
 	}
 
-	g := simple.NewUndirectedGraph(0, math.Inf(1))
+	g := simple.NewUndirectedGraph()
 outer:
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
-			_, ok := isMember[n.ID()]
-			if !ok {
+			if !members.has(n.ID()) {
 				continue outer
 			}
 		}
@@ -567,12 +579,12 @@ outer:
 	}
 
 	clqs := topo.BronKerbosch(g)
-	var cliqueIDs [][]int
+	var cliqueIDs [][]int64
 	for _, clq := range clqs {
 		if len(clq) < min {
 			continue
 		}
-		ids := make([]int, 0, len(clq))
+		ids := make([]int64, 0, len(clq))
 		for _, n := range clq {
 			ids = append(ids, n.ID())
 		}
@@ -583,17 +595,16 @@ outer:
 }
 
 func ranksOf(grp group, edges []edge) ranks {
-	isMember := make(map[int]struct{})
+	members := make(intset)
 	for _, fam := range grp.members {
-		isMember[fam.id] = struct{}{}
+		members.add(fam.id)
 	}
 
-	g := simple.NewDirectedGraph(0, math.Inf(1))
+	g := simple.NewWeightedDirectedGraph(0, math.Inf(1))
 outer:
 	for _, e := range edges {
 		for _, n := range []graph.Node{e.From(), e.To()} {
-			_, ok := isMember[n.ID()]
-			if !ok {
+			if !members.has(n.ID()) {
 				continue outer
 			}
 		}
@@ -602,7 +613,7 @@ outer:
 				g.AddNode(n)
 			}
 		}
-		g.SetEdge(e)
+		g.SetWeightedEdge(e)
 	}
 
 	r := network.PageRank(g, 0.85, 1e-6)
@@ -615,7 +626,7 @@ outer:
 }
 
 type rank struct {
-	id   int
+	id   int64
 	rank float64
 }
 
