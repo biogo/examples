@@ -72,12 +72,12 @@ func main() {
 	t := (len(files)*len(files) + len(files)) / 2
 	for _, f := range files {
 		acquire()
-		go runSelf(t, f, krishnaflags)
+		go runSelf(t, f, *kflags)
 	}
 	for i := range files[1:] {
 		for j := range files[i : len(files)-1] {
 			acquire()
-			go runPair(t, files[i], files[j+i+1], krishnaflags)
+			go runPair(t, files[i], files[j+i+1], *kflags)
 		}
 	}
 	wg.Wait()
