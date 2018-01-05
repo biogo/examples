@@ -18,7 +18,7 @@ import (
 
 var (
 	in     = flag.String("in", "", "Specifies the input filename.")
-	cut    = flag.Int("cut", 400, "Specifies the size cut-off for inclusion.")
+	cut    = flag.Int("cut", 0, "Specifies the size cut-off for inclusion.")
 	bundle = flag.Int("bundle", 20e6, "Specifies the sum of sequence length in a bundle.")
 )
 
