@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// ucsc is an example client of biogo.examples/ucsc/ucsc. I reads a set of
+// ucsc is an example client of biogo.examples/ucsc/ucsc. It reads a set of
 // UCSC exported FASTA sequences and parses the location information in the
 // sequence description into the sequence metadata, converting the 1-based
 // UCSC position information into 0-based half-open used by bíogo. It then
