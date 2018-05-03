@@ -51,6 +51,7 @@ var (
 	lengthFrac float64
 	threads    int
 	consFasta  bool
+	verbose    bool
 )
 
 func main() {
@@ -63,6 +64,7 @@ func main() {
 	flag.BoolVar(&consFasta, "fasta", false, "Output consensus as fasta with quality case filtering.")
 	flag.Float64Var(&lengthFrac, "minLen", 0, "Minimum proportion of longest family member.")
 	flag.StringVar(&dir, "dir", "", "Target directory for output. If not empty dir is deleted first.")
+	flag.BoolVar(&verbose, "verbose", false, "Verbosely output aligner stderr output to stderr.")
 	flag.Parse()
 
 	if len(flag.Args()) != 1 {
@@ -303,9 +305,9 @@ func consensus(in, aligner string) (*linear.QSeq, error) {
 	)
 	switch strings.ToLower(aligner) {
 	case "muscle":
-		m, err = muscle.Muscle{InFile: in, Quiet: true}.BuildCommand()
+		m, err = muscle.Muscle{InFile: in, Quiet: !verbose}.BuildCommand()
 	case "mafft":
-		m, err = mafft.Mafft{InFile: in, Auto: true, Quiet: true}.BuildCommand()
+		m, err = mafft.Mafft{InFile: in, Auto: true, Quiet: !verbose}.BuildCommand()
 	default:
 		log.Fatal("no valid aligner specified")
 	}
@@ -314,6 +316,9 @@ func consensus(in, aligner string) (*linear.QSeq, error) {
 	}
 	buf := &bytes.Buffer{}
 	m.Stdout = buf
+	if verbose {
+		m.Stderr = os.Stderr
+	}
 	err = m.Run()
 	if err != nil {
 		return nil, err
