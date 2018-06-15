@@ -30,6 +30,10 @@ var (
 	thresh     = flag.Float64("thresh", 0.05, "Specifies minimum family intersection to report.")
 	resolution = flag.Float64("resolution", 1, "Specifies the resolution for cluster modularisation.")
 	minFam     = flag.Int("min", 0, "Specify the minimum number of members in a family to include (if 0 no limit).")
+	annot      = flag.String("annot", "", "Specifies the input GFF annotation file name.")
+	normAnnot  = flag.Bool("norm-annot", true, "Specifies whether annotation weights should be normalised by family coverage.")
+	diffTime   = flag.Float64("diffusion-time", 0.1, "Specifies the name diffusion time constant.")
+	diffTol    = flag.Float64("diffusion-tolerance", 1e-6, "Specifies the name fraction tolerance for reporting.")
 	cliques    = flag.Bool("cliques", false, "Find cliques in non-clique clusters.")
 	threads    = flag.Int("threads", 0, "Specify the number of parallel connection threads (if 0 use GOMAXPROCS).")
 )
@@ -142,6 +146,31 @@ func main() {
 			edges[i].to.cluster = clustID
 		}
 	}
+	var diffusedNames, originalNames map[int64][]nameSupport
+	if *annot != "" {
+		annotations, err := readAnnotations(*annot)
+		if err != nil {
+			log.Printf("failed to read annotations: %v", err)
+			goto failAnnot
+		}
+		diffusedNames = make(map[int64][]nameSupport)
+		originalNames = make(map[int64][]nameSupport)
+		for _, g := range grps {
+			err := nameDiffusion(diffusedNames, originalNames, g, edges, annotations, *normAnnot, *diffTime, *diffTol)
+			if err != nil {
+				log.Printf("failed to diffuse names: %v", err)
+				goto failAnnot
+			}
+		}
+		for i, e := range edges {
+			edges[i].from.names = diffusedNames[e.from.id]
+			edges[i].to.names = diffusedNames[e.to.id]
+
+			edges[i].from.annotated = originalNames[e.from.id]
+			edges[i].to.annotated = originalNames[e.to.id]
+		}
+	}
+failAnnot:
 	if *dotOut != "" {
 		writeDOT(*dotOut, edges)
 	}
@@ -153,34 +182,50 @@ func main() {
 		Source:  "igor/victor",
 		Feature: "repeat",
 		FeatAttributes: gff.Attributes{
-			{Tag: "Family"},
-			{Tag: "Cluster"},
-			{Tag: "Clique"},
+			0: {Tag: "Family"},
+			3: {},
 		},
 	}
+
 	for _, fam := range families {
+		ft.FeatAttributes = ft.FeatAttributes[:1]
+		ft.FeatAttributes[0].Value = fmt.Sprint(fam.id)
 		clustID, isClustered := clusterIdentity[fam.id]
+		if isClustered {
+			ft.FeatAttributes = append(ft.FeatAttributes,
+				gff.Attribute{Tag: "Cluster", Value: fmt.Sprint(clustID)},
+			)
+			switch id := cliqueIdentity[fam.id]; {
+			case len(id) == 0:
+				// Do nothing.
+			case cliqueMemberships[fam.id] == 1:
+				ft.FeatAttributes = append(ft.FeatAttributes,
+					gff.Attribute{Tag: "Clique", Value: dotted(id)},
+				)
+			default:
+				ft.FeatAttributes = append(ft.FeatAttributes,
+					gff.Attribute{Tag: "Clique", Value: fmt.Sprintf("%d*", id[0])},
+				)
+			}
+		}
+		diffusedName := diffusedNames[fam.id]
+		if len(diffusedName) != 0 {
+			ft.FeatAttributes = append(ft.FeatAttributes,
+				gff.Attribute{Tag: "Name", Value: nameSupports(diffusedName).String()},
+			)
+		}
+		originalName := originalNames[fam.id]
+		if len(originalName) != 0 {
+			ft.FeatAttributes = append(ft.FeatAttributes,
+				gff.Attribute{Tag: "OrigName", Value: nameSupports(originalName).String()},
+			)
+		}
 		for _, m := range fam.members {
 			ft.SeqName = m.Chr
 			ft.FeatStart = m.Start
 			ft.FeatEnd = m.End
 			ft.FeatStrand = m.Orient
 			ft.FeatFrame = gff.NoFrame
-			ft.FeatAttributes[0].Value = fmt.Sprint(fam.id)
-			if isClustered {
-				ft.FeatAttributes = ft.FeatAttributes[:3]
-				ft.FeatAttributes[1].Value = fmt.Sprint(clustID)
-				switch id := cliqueIdentity[fam.id]; {
-				case id == nil:
-					ft.FeatAttributes = ft.FeatAttributes[:2]
-				case cliqueMemberships[fam.id] == 1:
-					ft.FeatAttributes[2].Value = dotted(id)
-				default:
-					ft.FeatAttributes[2].Value = fmt.Sprintf("%d*", id[0])
-				}
-			} else {
-				ft.FeatAttributes = ft.FeatAttributes[:1]
-			}
 			_, err := w.Write(ft)
 			if err != nil {
 				log.Fatalf("error: %v", err)

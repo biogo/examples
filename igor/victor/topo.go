@@ -13,6 +13,8 @@ import (
 
 	"golang.org/x/exp/rand"
 
+	"github.com/biogo/store/interval"
+
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/community"
 	"gonum.org/v1/gonum/graph/encoding"
@@ -26,19 +28,26 @@ type node struct {
 	id      int64
 	cluster int64
 	members int
+
+	names     []nameSupport
+	annotated []nameSupport
 }
 
 var _ encoding.Attributer = node{}
 
 func (n node) ID() int64 { return n.id }
 func (n node) Attributes() []encoding.Attribute {
-	if n.cluster == -1 {
-		return []encoding.Attribute{{"members", fmt.Sprint(n.members)}}
+	attr := make([]encoding.Attribute, 0, 3)
+	if len(n.names) != 0 {
+		attr = append(attr, encoding.Attribute{"name", fmt.Sprintf("%q", n.names[0].name)})
 	}
-	return []encoding.Attribute{
-		{"cluster", fmt.Sprint(n.cluster)},
-		{"members", fmt.Sprint(n.members)},
+	if len(n.annotated) != 0 {
+		attr = append(attr, encoding.Attribute{"origname", fmt.Sprintf("%q", n.annotated[0].name)})
 	}
+	if n.cluster != -1 {
+		attr = append(attr, encoding.Attribute{"cluster", fmt.Sprint(n.cluster)})
+	}
+	return append(attr, encoding.Attribute{"members", fmt.Sprint(n.members)})
 }
 
 // edge is a graph edge.
@@ -338,3 +347,84 @@ func (o ranks) Less(i, j int) bool {
 	return o[i].rank > o[j].rank || (o[i].rank == o[j].rank && o[i].id < o[j].id)
 }
 func (o ranks) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
+
+func nameDiffusion(dstDiff, dstOrig map[int64][]nameSupport, grp group, edges []edge, annots map[string]*interval.IntTree, normalise bool, dt, tol float64) error {
+	members := make(intset)
+	for _, fam := range grp.members {
+		members.add(fam.id)
+	}
+
+	g := simple.NewUndirectedGraph()
+outer:
+	for _, e := range edges {
+		for _, n := range []graph.Node{e.from, e.to} {
+			if !members.has(n.ID()) {
+				continue outer
+			}
+		}
+		for _, n := range []graph.Node{e.from, e.to} {
+			if !g.Has(n.ID()) {
+				g.AddNode(n)
+			}
+		}
+		g.SetEdge(e)
+	}
+	l := network.NewLaplacian(g)
+
+	names := make(map[string]map[int64]float64)
+	for _, fam := range grp.members {
+		flat, err := flattenFamily(fam)
+		if err != nil {
+			return err
+		}
+		for _, cov := range nameCoverage(flat, annots, normalise) {
+			ns, ok := names[cov.name]
+			if !ok {
+				ns = make(map[int64]float64)
+				names[cov.name] = ns
+			}
+			if _, ok := ns[fam.id]; ok {
+				panic(fmt.Sprintf("unexpected collision: %s:%d already exists", cov.name, fam.id))
+			}
+			ns[fam.id] = cov.coverage
+		}
+	}
+
+	reshape(dstOrig, names, tol)
+	diffused := make(map[string]map[int64]float64)
+	for n, w := range names {
+		diffused[n] = network.Diffuse(nil, w, l, dt)
+	}
+	reshape(dstDiff, diffused, tol)
+
+	return nil
+}
+
+func reshape(dst map[int64][]nameSupport, src map[string]map[int64]float64, tol float64) {
+	idNameSupport := make(map[int64]map[string]float64)
+	for id, nameSupport := range src {
+		for name, weight := range nameSupport {
+			s, ok := idNameSupport[name]
+			if !ok {
+				s = make(map[string]float64)
+				idNameSupport[name] = s
+			}
+			s[id] = weight
+		}
+	}
+
+	for id, diffused := range idNameSupport {
+		ns := make([]nameSupport, 0, len(diffused))
+		for n, c := range diffused {
+			ns = append(ns, nameSupport{name: n, coverage: c})
+		}
+		sort.Sort(bySupport(ns))
+		for i, v := range ns {
+			if v.coverage < tol {
+				ns = ns[:i]
+				break
+			}
+		}
+		dst[id] = ns
+	}
+}
