@@ -156,6 +156,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Internal error: %v", err)
 		}
+		if target.Len() == 0 {
+			log.Fatal("Target sequence is zero length.")
+		}
 	} else {
 		logger.Fatalln("No target provided.")
 	}
@@ -166,6 +169,9 @@ func main() {
 			query, err = packSequence(queryName)
 			if err != nil {
 				log.Fatalf("Internal error: %v", err)
+			}
+			if query.Len() == 0 {
+				log.Fatal("Query sequence is zero length.")
 			}
 		} else {
 			logger.Fatalln("No query provided in non-self comparison.")
