@@ -3,8 +3,8 @@
 // license that can be found in the LICENSE file.
 
 // seqer returns multiple fasta sequences corresponding to feature intervals
-// described in the JSON output from igor. It will also produce fastq consensus
-// sequence output from one of MUSCLE or MAFFT.
+// described in the JSON output from igor, converted to GFF by gffer. It will
+// also produce fastq consensus sequence output from one of MUSCLE or MAFFT.
 package main
 
 import (

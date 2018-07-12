@@ -8,6 +8,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -24,6 +25,9 @@ type feat struct {
 }
 
 func main() {
+	idStart := flag.Int("start-id", 0, "Initial family ID for output.")
+	flag.Parse()
+
 	r := bufio.NewReader(os.Stdin)
 	b := bufio.NewWriter(os.Stdout)
 	defer b.Flush()
@@ -35,7 +39,7 @@ func main() {
 		FeatAttributes: gff.Attributes{{Tag: "Family"}},
 	}
 	var v []*feat
-	for fam := 0; ; fam++ {
+	for fam := *idStart; ; fam++ {
 		l, err := r.ReadBytes('\n')
 		if err != nil {
 			break
