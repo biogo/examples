@@ -240,14 +240,14 @@ func edgesIn(g graph.Directed, n []graph.Node) int {
 	// need all the nodes, just the edges.
 	for _, u := range n {
 		uid := u.ID()
-		for _, v := range g.From(uid) {
+		for _, v := range graph.NodesOf(g.From(uid)) {
 			vid := v.ID()
 			if !in.has(vid) {
 				continue
 			}
 			seen.add(uid, vid)
 		}
-		for _, v := range g.To(uid) {
+		for _, v := range graph.NodesOf(g.To(uid)) {
 			vid := v.ID()
 			if !in.has(vid) {
 				continue
