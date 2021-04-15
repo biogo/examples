@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/gonum/plot/palette"
+	"gonum.org/v1/plot/palette"
 
 	"github.com/biogo/biogo/alphabet"
 	"github.com/biogo/biogo/index/kmerindex"
