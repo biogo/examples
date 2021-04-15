@@ -60,6 +60,7 @@ func done() int32 {
 
 func main() {
 	kflags := flag.String("krishnaflags", "-tmp=/scratch -threads=2 -log", "Quoted set of flags to pass to krishna child processes.")
+	diagonal := flag.Bool("diag", false, "Only run self alignments.")
 	threads := flag.Int("threads", 6, "Number of concurrent krishna instances to run.")
 	flag.Parse()
 
@@ -74,10 +75,12 @@ func main() {
 		acquire()
 		go runSelf(t, f, *kflags)
 	}
-	for i := range files[1:] {
-		for j := range files[i : len(files)-1] {
-			acquire()
-			go runPair(t, files[i], files[j+i+1], *kflags)
+	if !*diagonal {
+		for i := range files[1:] {
+			for j := range files[i : len(files)-1] {
+				acquire()
+				go runPair(t, files[i], files[j+i+1], *kflags)
+			}
 		}
 	}
 	wg.Wait()
